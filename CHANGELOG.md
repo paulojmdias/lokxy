@@ -1,3 +1,10 @@
+## [0.1.1](https://github.com/paulojmdias/lokxy/compare/0.1.0...0.1.1) (2024-10-14)
+
+
+### Bug Fixes
+
+* fix docker build ([#2](https://github.com/paulojmdias/lokxy/issues/2)) ([f548916](https://github.com/paulojmdias/lokxy/commit/f54891619159b2ed984ec3968dbe49ad8c75f669))
+
 # [0.1.0](https://github.com/paulojmdias/lokxy/compare/0.0.1...0.1.0) (2024-10-14)
 
 
