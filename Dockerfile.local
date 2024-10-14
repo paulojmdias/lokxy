@@ -1,0 +1,18 @@
+FROM golang:1.23 AS builder
+
+ARG BUILDPLATFORM
+ARG TARGETARCH
+ARG TARGETOS
+ENV GOARCH=${TARGETARCH} GOOS=${TARGETOS}
+
+COPY . /go/src/github.com/paulojmdias/lokxy
+RUN cd /go/src/github.com/paulojmdias/lokxy &&\
+    make build
+
+FROM gcr.io/distroless/static-debian12
+
+EXPOSE 3100
+
+COPY --from=builder /go/src/github.com/paulojmdias/lokxy/lokxy /usr/local/bin/lokxy
+
+CMD ["/usr/local/bin/lokxy"]

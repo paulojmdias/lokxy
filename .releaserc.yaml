@@ -1,0 +1,16 @@
+branches:
+  - main
+
+plugins:
+  - "@semantic-release/commit-analyzer"
+  - "@semantic-release/release-notes-generator"
+  - - "@semantic-release/exec"
+    - prepareCmd: 'echo "${nextRelease.version}" >> VERSION'
+      publishCmd: |
+        echo "${nextRelease.notes}" > /tmp/release-notes.md
+        export GORELEASER_CURRENT_TAG=$(cat VERSION)
+        goreleaser release --release-notes /tmp/release-notes.md --clean --skip=validate
+  - "@semantic-release/changelog"
+  - "@semantic-release/git"
+
+tagFormat: ${version}
