@@ -69,9 +69,9 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            LOKXY_VERSION=${{ needs.semantic_release.outputs.version }}
           tags: |
             lokxy/lokxy:${{ github.ref_name == 'main' && 'latest' || github.ref_name }},lokxy/lokxy:${{ needs.semantic_release.outputs.version }}
           cache-from: type=registry,ref=lokxy/lokxy:latest
           cache-to: type=registry,ref=lokxy/lokxy:latest,mode=max,image-manifest=true
-        env:
-          LOKXY_VERSION: ${{ needs.semantic_release.outputs.version }}
