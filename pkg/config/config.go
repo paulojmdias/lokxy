@@ -1,9 +1,10 @@
 package config
 
 import (
-	"gopkg.in/yaml.v2"
 	"os"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 // HTTPClientConfig holds the HTTP client settings such as timeouts and TLS configurations
