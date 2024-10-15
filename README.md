@@ -80,7 +80,7 @@ This command binds the container to port 8080 and mounts the local config.yaml f
 
 ## Play with Lokxy
 
-We've provide a `docker-compose.yml` file located in the mixin/play/ folder to help you quickly get Lokxy up and running using Docker.
+We provide a `docker-compose.yml` file located in the mixin/play/ folder to help you quickly get Lokxy up and running using Docker.
 
 1. Navigate to the mixin/play directory
 ```sh
