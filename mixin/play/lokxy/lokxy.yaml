@@ -1,0 +1,15 @@
+server_groups:
+  - name: "Loki 1"
+    url: "http://loki1:3101"
+    timeout: 60
+    headers:
+      X-Scope-OrgID: "tenant1"
+  - name: "Loki 2"
+    url: "http://loki2:3102"
+    timeout: 60
+    headers:
+      X-Scope-OrgID: "tenant2"
+
+logging:
+  level: "info"
+  format: "json"

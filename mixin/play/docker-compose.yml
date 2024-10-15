@@ -1,0 +1,77 @@
+networks:
+  play:
+
+volumes:
+  grafana_data: {}
+
+services:
+  grafana:
+    image: grafana/grafana:latest
+    pull_policy: always
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Editor
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+    expose:
+      - 3000
+    networks:
+      - play
+
+  loki1:
+    image: grafana/loki:latest
+    ports:
+      - "3101:3101"
+    command: -config.file=/etc/loki/local-config.yaml -server.http-listen-port=3101
+    expose:
+      - 3101
+    networks:
+      - play
+
+  promtail1:
+    image: grafana/promtail:latest
+    volumes:
+      - /var/log:/var/log
+      - "./promtail:/config"
+    command: -config.file=/config/promtail1.yml
+    networks:
+      - play
+
+  loki2:
+    image: grafana/loki:latest
+    ports:
+      - "3102:3102"
+    command: -config.file=/etc/loki/local-config.yaml -server.http-listen-port=3102
+    expose:
+      - 3102
+    networks:
+      - play
+
+  promtail2:
+    image: grafana/promtail:latest
+    volumes:
+      - /var/log:/var/log
+      - "./promtail:/config"
+    command: -config.file=/config/promtail2.yml
+    networks:
+      - play
+
+  lokxy:
+    image: lokxy/lokxy:0.1.2
+    volumes:
+      - "./lokxy:/config"
+    ports:
+      - "3100:3100"
+    expose:
+      - 3100
+    command: lokxy --config /config/lokxy.yaml --bind-addr=:3100
+    networks:
+      - play

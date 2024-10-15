@@ -74,4 +74,4 @@ jobs:
           tags: |
             lokxy/lokxy:${{ github.ref_name == 'main' && 'latest' || github.ref_name }},lokxy/lokxy:${{ needs.semantic_release.outputs.version }}
           cache-from: type=registry,ref=lokxy/lokxy:latest
-          cache-to: type=registry,ref=lokxy/lokxy:latest,mode=max,image-manifest=true
+          cache-to: type=inline,mode=max

@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-lokxy
+/lokxy
 
 # Test binary, built with `go test -c`
 *.test
@@ -24,4 +24,4 @@ go.work.sum
 
 # env file
 .env
-config.yaml
+/config.yaml

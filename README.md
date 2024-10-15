@@ -7,6 +7,7 @@ Lokxy is a powerful log aggregator for Loki, designed to collect and unify log s
 - [Installation](#installation)
 - [How to Run Locally](#how-to-run-locally)
 - [How to Run as a Container](#how-to-run-as-a-container)
+- [Play with Lokxy](#play-with-lokxy)
 - [Configuration File](#configuration-file)
 - [Usage](#usage)
 
@@ -76,6 +77,27 @@ docker run --rm -it -p 8080:8080 -v $(pwd)/config.yaml:/lokxy/config.yaml lokxy:
 ```
 
 This command binds the container to port 8080 and mounts the local config.yaml file for configuration. Adjust ports and file paths as needed.
+
+## Play with Lokxy
+
+We provide a `docker-compose.yml` file located in the mixin/play/ folder to help you quickly get Lokxy up and running using Docker.
+
+1. Navigate to the mixin/play directory
+```sh
+cd mixin/play/
+```
+
+2. Start Lokxy with Docker Compose
+```sh
+docker-compose up
+```
+
+This will start 2 isolated Loki instances, 2 Promtail instances, 1 Lokxy and 1 Grafana. When it's up and running, you just need to open Grafana in http://localhost:3000, and see the data on Explore menu.
+
+You will found 3 different data sources on Grafana:
+* `loki1` -> Instance number 1 from Loki
+* `loki2` -> Instance number 2 from Loki
+* `lokxy` -> Datasource which will aggregate the data from both Loki instances
 
 ## Configuration File
 
