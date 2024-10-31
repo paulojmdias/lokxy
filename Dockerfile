@@ -18,5 +18,6 @@ FROM gcr.io/distroless/static-debian12
 EXPOSE 3100
 
 COPY --from=builder /tmp/lokxy /usr/local/bin/lokxy
+USER lokxyuser
 
 CMD ["/usr/local/bin/lokxy"]
