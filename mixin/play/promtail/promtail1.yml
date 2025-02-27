@@ -17,3 +17,29 @@ scrape_configs:
         labels:
           job: varlogs1
           __path__: /var/log/*log
+  - job_name: "flog-json-logs"
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: "flog-generator-1"
+          __path__: "/tmp/flog1.log"
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: datetime
+            host: host
+            method: method
+            request: request
+            protocol: protocol
+            status: status
+            bytes: bytes
+            referer: referer
+      - timestamp:
+          source: timestamp
+          format: "02/Jan/2006:15:04:05 -0700"
+      - labels:
+          method:
+          status:
+          request:
+          protocol:
