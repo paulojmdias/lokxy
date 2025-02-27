@@ -40,8 +40,17 @@ services:
     image: grafana/promtail:latest
     volumes:
       - /var/log:/var/log
+      - /tmp:/tmp
       - "./promtail:/config"
     command: -config.file=/config/promtail1.yml
+    networks:
+      - play
+
+  flog1:
+    image: mingrammer/flog:latest
+    volumes:
+      - /tmp:/tmp
+    command: -f json -d 500ms -l -o /tmp/flog1.log -t log -w
     networks:
       - play
 
@@ -59,8 +68,17 @@ services:
     image: grafana/promtail:latest
     volumes:
       - /var/log:/var/log
+      - /tmp:/tmp
       - "./promtail:/config"
     command: -config.file=/config/promtail2.yml
+    networks:
+      - play
+
+  flog2:
+    image: mingrammer/flog:latest
+    volumes:
+      - /tmp:/tmp
+    command: -f json -d 500ms -l -o /tmp/flog2.log -t log -w
     networks:
       - play
 
