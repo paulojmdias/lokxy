@@ -39,7 +39,6 @@ linters:
     - gci
     - goconst
     - gofmt
-    - goimports
     - gochecksumtype
     - gosimple
     - govet
