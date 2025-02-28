@@ -4,6 +4,8 @@ GOFILES := $(shell find . -name "*.go" -type f ! -path "./vendor/*")
 GOFMT ?= gofmt
 GOIMPORTS ?= goimports -local=github.com/paulojmdias/lokxy
 STATICCHECK ?= staticcheck
+VERSION := $(shell git describe --tags --always)
+REVISION := $(shell git rev-parse HEAD)
 
 .PHONY: clean
 clean:
@@ -29,8 +31,8 @@ test:
 .PHONY: build
 build:
 	CGO_ENABLED=0 go build -mod=mod -tags netgo,builtinassets \
-		-ldflags="-X main.Version=$(shell git describe --tags --always) \
-		          -X main.Revision=$(shell git rev-parse HEAD)" \
+		-ldflags="-X main.Version=$(VERSION) \
+		          -X main.Revision=$(REVISION)" \
 		-x -o lokxy ./cmd/
 
 testlocal-build:
