@@ -28,7 +28,10 @@ test:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -mod=mod -tags netgo,builtinassets -x -o lokxy ./cmd/
+	CGO_ENABLED=0 go build -mod=mod -tags netgo,builtinassets \
+		-ldflags="-X main.Version=$(shell git describe --tags --always) \
+		          -X main.Revision=$(shell git rev-parse HEAD)" \
+		-x -o lokxy ./cmd/
 
 testlocal-build:
 	docker build -f Dockerfile.local --load -t lokxy:latest .
