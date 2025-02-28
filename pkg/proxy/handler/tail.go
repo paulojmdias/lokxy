@@ -5,8 +5,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -22,7 +22,7 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
+	CheckOrigin: func(_ *http.Request) bool {
 		return true // Allow all origins
 	},
 }
@@ -35,7 +35,7 @@ func createWebSocketDialer(instance cfg.ServerGroup, logger log.Logger) (*websoc
 
 	// Load CA certificate if provided
 	if instance.HTTPClientConfig.TLSConfig.CAFile != "" {
-		caCert, err := ioutil.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
+		caCert, err := os.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
 		if err != nil {
 			level.Error(logger).Log("msg", "Failed to load CA certificate", "file", instance.HTTPClientConfig.TLSConfig.CAFile, "err", err)
 			return nil, err

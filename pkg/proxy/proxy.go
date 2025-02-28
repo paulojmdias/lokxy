@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -73,7 +73,7 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 
 	// Load CA certificate if provided
 	if instance.HTTPClientConfig.TLSConfig.CAFile != "" {
-		caCert, err := ioutil.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
+		caCert, err := os.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
 		if err != nil {
 			return nil, err
 		}
@@ -200,8 +200,7 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) 
 
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body) // Forward the body as-is
+		_, _ = io.Copy(w, resp.Body) // Forward the body as-is
 		resp.Body.Close()
-		return
 	}
 }
