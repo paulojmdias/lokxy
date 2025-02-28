@@ -49,4 +49,4 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.Version={{ .Tag }} -X main.Revision={{ .ShortCommit }}
+      - -s -w -X main.Version={{ .Env.GORELEASER_CURRENT_TAG }} -X main.Revision={{ .ShortCommit }}
