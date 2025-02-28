@@ -33,6 +33,7 @@ linters-settings:
 
 linters:
   enable:
+    - copyloopvar
     - depguard
     - errcheck
     - gci
@@ -48,7 +49,6 @@ linters:
     - staticcheck
     - typecheck
     - unconvert
-    - copyloopvar
   disable:
     - unused
     - unparam
