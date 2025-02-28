@@ -18,11 +18,13 @@ jobs:
         run: |
           go install -v golang.org/x/tools/cmd/goimports@latest
           go install -v honnef.co/go/tools/cmd/staticcheck@latest
+          go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - name: Test
         run: |
           make fmt && git diff --exit-code
           make imports && git diff --exit-code
           make test
+          make lint
   semantic_release:
     name: Semantic Release
     runs-on: ubuntu-latest
