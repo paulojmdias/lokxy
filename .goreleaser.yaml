@@ -49,4 +49,4 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.version={{ .Env.GORELEASER_CURRENT_TAG }} -X main.commit={{ .Commit }} -X main.date={{ .CommitDate }} -X main.builtBy=goreleaser
+      - -s -w -X main.Version={{ .Tag }} -X main.Revision={{ .ShortCommit }}
