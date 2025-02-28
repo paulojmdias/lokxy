@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -36,7 +37,12 @@ type CustomRoundTripper struct {
 
 // RoundTrip method allows us to inspect and modify requests/responses
 func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL, "headers", req.Header)
+	headersJSON, err := json.Marshal(req.Header)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "Failed to marshal headers for logging", "err", err)
+	} else {
+		level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL.String(), "headers", string(headersJSON))
+	}
 
 	// Perform the actual request
 	resp, err := c.rt.RoundTrip(req)
@@ -50,8 +56,7 @@ func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		if err != nil {
 			return nil, err
 		}
-		defer gzReader.Close()
-		resp.Body = gzReader
+		resp.Body = io.NopCloser(gzReader) // Prevent early closure
 	}
 
 	// Add any custom behavior for the response here, if needed
@@ -115,6 +120,20 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 	results := make(chan *http.Response, len(config.ServerGroups))
 	errors := make(chan error, len(config.ServerGroups))
 
+	// Read the original request body once
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		level.Error(logger).Log("msg", "Failed to read request body", "err", err)
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	r.Body.Close() // Close the original request body
+
+	// Function to create a fresh reader for each request
+	bodyReader := func() io.ReadCloser {
+		return io.NopCloser(strings.NewReader(string(bodyBytes)))
+	}
+
 	// Forward requests using the custom RoundTripper
 	for _, instance := range config.ServerGroups {
 		wg.Add(1)
@@ -137,7 +156,7 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			// Record the request
 			metrics.RequestCount.WithLabelValues(path, method, instance.Name).Inc()
 
-			req, err := http.NewRequest(r.Method, targetURL, r.Body)
+			req, err := http.NewRequest(r.Method, targetURL, bodyReader())
 			if err != nil {
 				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
 				level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
@@ -184,12 +203,12 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 		handler.HandleTailWebSocket(w, r, config, logger)
 	} else {
 		level.Warn(logger).Log("msg", "No route matched, returning first response only")
-		forwardFirstResponse(w, results)
+		forwardFirstResponse(w, results, logger)
 	}
 }
 
 // Forward the first valid response for non-query endpoints
-func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) {
+func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	for resp := range results {
 		// Directly copy all headers and body from Loki response to Grafana
 		for key, values := range resp.Header {
@@ -200,7 +219,10 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) 
 
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body) // Forward the body as-is
+		_, err := io.Copy(w, resp.Body)
+		if err != nil {
+			level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
+		}
 		resp.Body.Close()
 		return
 	}
