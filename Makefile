@@ -4,8 +4,8 @@ GOFILES := $(shell find . -name "*.go" -type f ! -path "./vendor/*")
 GOFMT ?= gofmt
 GOIMPORTS ?= goimports -local=github.com/paulojmdias/lokxy
 STATICCHECK ?= staticcheck
-VERSION := $(shell git describe --tags --always)
-REVISION := $(shell git rev-parse HEAD)
+VERSION := $(shell git describe --tags --abbrev=0)
+REVISION := $(shell git rev-parse --short HEAD)
 
 .PHONY: clean
 clean:
