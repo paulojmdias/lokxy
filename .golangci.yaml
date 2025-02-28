@@ -33,21 +33,22 @@ linters-settings:
 
 linters:
   enable:
-    - errcheck
-    - goconst
-    - revive
-    - ineffassign
-    - misspell
-    - unconvert
-    - govet
-    - typecheck
     - depguard
-    - copyloopvar
+    - errcheck
+    - gci
+    - goconst
     - gofmt
     - goimports
-    - gosimple
-    - staticcheck
     - gochecksumtype
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - typecheck
+    - unconvert
+    - copyloopvar
   disable:
     - unused
     - unparam
