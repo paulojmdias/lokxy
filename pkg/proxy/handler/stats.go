@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -18,7 +19,9 @@ func HandleLokiStats(w http.ResponseWriter, results <-chan *http.Response, logge
 		// Read the entire body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to read response body", "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to read response body", "err", err); logErr != nil {
+				fmt.Println("Error logging failure:", logErr)
+			}
 			continue
 		}
 
@@ -30,7 +33,9 @@ func HandleLokiStats(w http.ResponseWriter, results <-chan *http.Response, logge
 			Entries int `json:"entries"`
 		}
 		if err := json.Unmarshal(bodyBytes, &statsResponse); err != nil {
-			level.Error(logger).Log("msg", "Failed to unmarshal stats response", "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to unmarshal stats response", "err", err); logErr != nil {
+				fmt.Println("Error logging failure:", logErr)
+			}
 			continue
 		}
 
@@ -51,6 +56,8 @@ func HandleLokiStats(w http.ResponseWriter, results <-chan *http.Response, logge
 
 	// Send the merged stats response back to the client
 	if err := json.NewEncoder(w).Encode(finalStatsResponse); err != nil {
-		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
+		if logErr := level.Error(logger).Log("msg", "Failed to encode final response", "err", err); logErr != nil {
+			fmt.Println("Error logging failure:", logErr)
+		}
 	}
 }

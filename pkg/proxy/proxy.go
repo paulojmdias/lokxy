@@ -4,9 +4,10 @@ import (
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +37,9 @@ type CustomRoundTripper struct {
 
 // RoundTrip method allows us to inspect and modify requests/responses
 func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL, "headers", req.Header)
+	if err := level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL, "headers", req.Header); err != nil {
+		fmt.Println("Failed to log:", err)
+	}
 
 	// Perform the actual request
 	resp, err := c.rt.RoundTrip(req)
@@ -73,7 +76,7 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 
 	// Load CA certificate if provided
 	if instance.HTTPClientConfig.TLSConfig.CAFile != "" {
-		caCert, err := ioutil.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
+		caCert, err := os.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +112,7 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 	path := r.URL.Path
 	method := r.Method
 
-	level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
+	_ = level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
 
 	var wg sync.WaitGroup
 	results := make(chan *http.Response, len(config.ServerGroups))
@@ -125,7 +128,9 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			client, err := createHTTPClient(instance, logger)
 			if err != nil {
 				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
-				level.Error(logger).Log("msg", "Failed to create HTTP client", "instance", instance.Name, "err", err)
+				if logErr := level.Error(logger).Log("msg", "Failed to create HTTP client", "instance", instance.Name, "err", err); logErr != nil {
+					fmt.Println("Error logging failure:", logErr)
+				}
 				return
 			}
 
@@ -140,7 +145,9 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			req, err := http.NewRequest(r.Method, targetURL, r.Body)
 			if err != nil {
 				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
-				level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
+				if logErr := level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err); logErr != nil {
+					fmt.Println("Error logging failure:", logErr)
+				}
 				errors <- err
 				return
 			}
@@ -152,14 +159,20 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 
 			for name, headers := range req.Header {
 				for _, h := range headers {
-					level.Debug(logger).Log("msg", "Request Header", "Name", name, "Value", h)
+					if err := level.Debug(logger).Log("msg", "Request Header", "Name", name, "Value", h); err != nil {
+						if errLog := level.Error(logger).Log("msg", "Failed to log request header", "err", err); errLog != nil {
+							fmt.Println("Error logging log error:", errLog)
+						}
+					}
 				}
 			}
 
 			resp, err := client.Do(req)
 			if err != nil {
 				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
-				level.Error(logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
+				if logErr := level.Error(logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err); logErr != nil {
+					fmt.Println("Error logging failure:", logErr)
+				}
 				errors <- err
 				return
 			}
@@ -183,13 +196,15 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 	} else if strings.HasPrefix(path, "/loki/api/v1/tail") {
 		handler.HandleTailWebSocket(w, r, config, logger)
 	} else {
-		level.Warn(logger).Log("msg", "No route matched, returning first response only")
-		forwardFirstResponse(w, results)
+		if err := level.Warn(logger).Log("msg", "No route matched, returning first response only"); err != nil {
+			fmt.Println("Logging error:", err)
+		}
+		forwardFirstResponse(w, results, logger)
 	}
 }
 
 // Forward the first valid response for non-query endpoints
-func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) {
+func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	for resp := range results {
 		// Directly copy all headers and body from Loki response to Grafana
 		for key, values := range resp.Header {
@@ -200,8 +215,14 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) 
 
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body) // Forward the body as-is
+		_, err := io.Copy(w, resp.Body) // Forward the body as-is
+		if err != nil {
+			if err := level.Error(logger).Log("msg", "Failed to copy response body", "err", err); err != nil {
+				fmt.Println("Logging error:", err)
+			}
+			return
+		}
 		resp.Body.Close()
-		return
+		//return
 	}
 }

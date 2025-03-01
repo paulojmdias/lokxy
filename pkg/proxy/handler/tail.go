@@ -4,9 +4,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -35,9 +36,11 @@ func createWebSocketDialer(instance cfg.ServerGroup, logger log.Logger) (*websoc
 
 	// Load CA certificate if provided
 	if instance.HTTPClientConfig.TLSConfig.CAFile != "" {
-		caCert, err := ioutil.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
+		caCert, err := os.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to load CA certificate", "file", instance.HTTPClientConfig.TLSConfig.CAFile, "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to load CA certificate", "file", instance.HTTPClientConfig.TLSConfig.CAFile, "err", err); logErr != nil {
+				fmt.Println("Error logging failure:", logErr)
+			}
 			return nil, err
 		}
 		caCertPool := x509.NewCertPool()
@@ -49,7 +52,9 @@ func createWebSocketDialer(instance cfg.ServerGroup, logger log.Logger) (*websoc
 	if instance.HTTPClientConfig.TLSConfig.CertFile != "" && instance.HTTPClientConfig.TLSConfig.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(instance.HTTPClientConfig.TLSConfig.CertFile, instance.HTTPClientConfig.TLSConfig.KeyFile)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to load client certificate and key", "certFile", instance.HTTPClientConfig.TLSConfig.CertFile, "keyFile", instance.HTTPClientConfig.TLSConfig.KeyFile, "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to load client certificate and key", "certFile", instance.HTTPClientConfig.TLSConfig.CertFile, "keyFile", instance.HTTPClientConfig.TLSConfig.KeyFile, "err", err); logErr != nil {
+				fmt.Println("Error logging failure:", logErr)
+			}
 			return nil, err
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
@@ -69,7 +74,9 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 	// Upgrade the HTTP connection to a WebSocket connection
 	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		level.Error(logger).Log("msg", "Failed to upgrade connection", "err", err)
+		if logErr := level.Error(logger).Log("msg", "Failed to upgrade connection", "err", err); logErr != nil {
+			fmt.Println("Error logging failure:", logErr)
+		}
 		return
 	}
 	defer clientConn.Close()
@@ -98,13 +105,15 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 				targetURL += "?" + r.URL.RawQuery
 			}
 
-			level.Info(logger).Log("msg", "Connecting to Loki WebSocket instance", "url", targetURL)
+			_ = level.Info(logger).Log("msg", "Connecting to Loki WebSocket instance", "url", targetURL)
 
 			// Create WebSocket dialer with TLS config
 			dialer, err := createWebSocketDialer(instance, logger)
 			if err != nil {
 				metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
-				level.Error(logger).Log("msg", "Failed to create WebSocket dialer", "instance", instance.Name, "err", err)
+				if logErr := level.Error(logger).Log("msg", "Failed to create WebSocket dialer", "instance", instance.Name, "err", err); logErr != nil {
+					fmt.Println("Error logging failure:", logErr)
+				}
 				return
 			}
 
@@ -120,11 +129,15 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 			backendConn, resp, err := dialer.Dial(targetURL, headers)
 			if err != nil {
 				metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
-				level.Error(logger).Log("msg", "Failed to connect to Loki WebSocket", "instance", instance.Name, "err", err)
+				if logErr := level.Error(logger).Log("msg", "Failed to connect to Loki WebSocket", "instance", instance.Name, "err", err); logErr != nil {
+					fmt.Println("Error logging failure:", logErr)
+				}
 				if resp != nil {
 					metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
 					body, _ := io.ReadAll(resp.Body)
-					level.Error(logger).Log("msg", "Handshake response", "status", resp.StatusCode, "body", string(body))
+					if logErr := level.Error(logger).Log("msg", "Handshake response", "status", resp.StatusCode, "body", string(body)); logErr != nil {
+						fmt.Println("Error logging failure:", logErr)
+					}
 				}
 				return
 			}
@@ -135,7 +148,9 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 				_, message, err := backendConn.ReadMessage()
 				if err != nil {
 					metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
-					level.Error(logger).Log("msg", "Error reading WebSocket message", "instance", instance.Name, "err", err)
+					if logErr := level.Error(logger).Log("msg", "Error reading WebSocket message", "instance", instance.Name, "err", err); logErr != nil {
+						fmt.Println("Error logging failure:", logErr)
+					}
 					return
 				}
 
@@ -143,7 +158,9 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 				var result map[string]interface{}
 				if err := json.Unmarshal(message, &result); err != nil {
 					metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
-					level.Error(logger).Log("msg", "Failed to decode WebSocket message", "instance", instance.Name, "err", err)
+					if logErr := level.Error(logger).Log("msg", "Failed to decode WebSocket message", "instance", instance.Name, "err", err); logErr != nil {
+						fmt.Println("Error logging failure:", logErr)
+					}
 					return
 				}
 
@@ -156,7 +173,9 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 	go func() {
 		for response := range mergedResponses {
 			if err := clientConn.WriteJSON(response); err != nil {
-				level.Error(logger).Log("msg", "Error writing to client WebSocket", "err", err)
+				if logErr := level.Error(logger).Log("msg", "Error writing to client WebSocket", "err", err); logErr != nil {
+					fmt.Println("Error logging failure:", logErr)
+				}
 				return
 			}
 		}
