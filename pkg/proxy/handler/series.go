@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -18,7 +19,9 @@ func HandleLokiSeries(w http.ResponseWriter, results <-chan *http.Response, logg
 		// Read the entire body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to read response body", "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to read response body", "err", err); logErr != nil {
+				fmt.Println("Error logging failure:", logErr)
+			}
 			continue
 		}
 
@@ -28,7 +31,9 @@ func HandleLokiSeries(w http.ResponseWriter, results <-chan *http.Response, logg
 			Status string              `json:"status"`
 		}
 		if err := json.Unmarshal(bodyBytes, &queryResult); err != nil {
-			level.Error(logger).Log("msg", "Failed to unmarshal Loki series response", "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to unmarshal Loki series response", "err", err); logErr != nil {
+				fmt.Println("Error logging failure:", logErr)
+			}
 			continue
 		}
 
@@ -37,7 +42,7 @@ func HandleLokiSeries(w http.ResponseWriter, results <-chan *http.Response, logg
 	}
 
 	// Log the merged series for debugging purposes
-	level.Debug(logger).Log("msg", "Merged series", "series", mergedSeries)
+	_ = level.Debug(logger).Log("msg", "Merged series", "series", mergedSeries)
 
 	// Prepare final response
 	finalResponse := map[string]interface{}{
@@ -46,9 +51,11 @@ func HandleLokiSeries(w http.ResponseWriter, results <-chan *http.Response, logg
 	}
 
 	// Log the answer series for debugging purposes
-	level.Debug(logger).Log("msg", "Grafana Answer", "series", finalResponse)
+	_ = level.Debug(logger).Log("msg", "Grafana Answer", "series", finalResponse)
 
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
-		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
+		if logErr := level.Error(logger).Log("msg", "Failed to encode final response", "err", err); logErr != nil {
+			fmt.Println("Error logging failure:", logErr)
+		}
 	}
 }

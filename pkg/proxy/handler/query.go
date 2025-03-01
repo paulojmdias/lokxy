@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -26,22 +27,36 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		// Read the entire body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to read response body", "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to read response body", "err", err); logErr != nil {
+				fmt.Println("Logging error:", logErr)
+			}
 			continue
 		}
 
 		// Log the full body for debugging
-		level.Debug(logger).Log("msg", "Complete body received", "body", string(bodyBytes))
+		if logErr := level.Debug(logger).Log("msg", "Complete body received", "body", string(bodyBytes)); logErr != nil {
+			if logErr2 := level.Error(logger).Log("msg", "Failed to log body received", "err", logErr); logErr2 != nil {
+				fmt.Println("Error logging log error:", logErr2)
+			}
+		}
 
 		// Decode into map[string]interface{} to inspect the raw structure
 		var rawBody map[string]interface{}
 		if err := json.Unmarshal(bodyBytes, &rawBody); err != nil {
-			level.Error(logger).Log("msg", "Failed to decode raw JSON", "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to decode raw JSON", "err", err); logErr != nil {
+				if logErr2 := level.Error(logger).Log("msg", "Failed to log decode error", "err", logErr); logErr2 != nil {
+					fmt.Println("Error logging log error:", logErr2)
+				}
+			}
 			continue
 		}
 
 		// Log raw body structure for debugging
-		level.Debug(logger).Log("msg", "Raw body structure", "rawBody", rawBody)
+		if logErr := level.Debug(logger).Log("msg", "Raw body structure", "rawBody", rawBody); logErr != nil {
+			if logErr2 := level.Error(logger).Log("msg", "Failed to log raw body structure", "err", logErr); logErr2 != nil {
+				fmt.Println("Error logging log error:", logErr2)
+			}
+		}
 
 		// Check if encodingFlags is present in the response and extract it
 		if data, ok := rawBody["data"].(map[string]interface{}); ok {
@@ -57,10 +72,11 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		// Attempt to decode into the expected loghttp.QueryResponse structure
 		var queryResult loghttp.QueryResponse
 		if err := json.Unmarshal(bodyBytes, &queryResult); err != nil {
-			level.Error(logger).Log("msg", "Failed to unmarshal into loghttp.QueryResponse", "err", err)
+			if logErr := level.Error(logger).Log("msg", "Failed to unmarshal into loghttp.QueryResponse", "err", err); logErr != nil {
+				fmt.Println("Error logging unmarshal failure:", logErr)
+			}
 			continue
 		}
-
 		resultType = queryResult.Data.ResultType
 
 		// Process based on ResultType
@@ -68,7 +84,9 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		case loghttp.ResultTypeStream:
 			streams, ok := queryResult.Data.Result.(loghttp.Streams)
 			if !ok {
-				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Streams")
+				if logErr := level.Error(logger).Log("msg", "Failed to assert type to loghttp.Streams"); logErr != nil {
+					fmt.Println("Error logging type assertion failure:", logErr)
+				}
 				continue
 			}
 			mergedStreams = append(mergedStreams, streams...)
@@ -76,7 +94,9 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		case loghttp.ResultTypeMatrix:
 			matrix, ok := queryResult.Data.Result.(loghttp.Matrix)
 			if !ok {
-				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Matrix")
+				if logErr := level.Error(logger).Log("msg", "Failed to assert type to loghttp.Matrix"); logErr != nil {
+					fmt.Println("Error logging type assertion failure:", logErr)
+				}
 				continue
 			}
 			mergedMatrix = append(mergedMatrix, matrix...)
@@ -164,7 +184,9 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 	}
 
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
-		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
+		if logErr := level.Error(logger).Log("msg", "Failed to encode final response", "err", err); logErr != nil {
+			fmt.Println("Error logging failure:", logErr)
+		}
 	}
 
 }

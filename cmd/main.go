@@ -41,8 +41,17 @@ func main() {
 	})
 
 	// Start the HTTP server
-	level.Info(logger).Log("msg", "Starting lokxy", "addr", bindAddr)
+	if err := level.Info(logger).Log("msg", "Starting lokxy", "addr", bindAddr); err != nil {
+		if logErr := level.Error(logger).Log("msg", "Failed to log start message", "err", err); logErr != nil {
+			fmt.Println("Logging error:", logErr)
+		}
+	}
+
 	if err := http.ListenAndServe(*bindAddr, nil); err != nil {
-		level.Info(logger).Log("msg", "Serving lokxy failed", "err", err)
+		if err := level.Info(logger).Log("msg", "Serving lokxy failed", "err", err); err != nil {
+			if logErr := level.Error(logger).Log("msg", "Failed to log serve failure", "err", err); logErr != nil {
+				fmt.Println("Logging error:", logErr)
+			}
+		}
 	}
 }

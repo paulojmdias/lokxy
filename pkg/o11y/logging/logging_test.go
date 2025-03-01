@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -39,23 +40,29 @@ func TestConfigureLogger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := ConfigureLogger(tt.config)
+			var buf bytes.Buffer
 
 			// Check logger level
+			logger := ConfigureLogger(tt.config)
 			if logger == nil {
 				t.Fatalf("Expected logger to be configured, got nil")
+			}
+			logger = log.NewSyncLogger(log.NewLogfmtLogger(&buf))
+			if tt.config.Format == "json" {
+				logger = log.NewSyncLogger(log.NewJSONLogger(&buf))
+			}
+
+			err := logger.Log("key", "value")
+			if err != nil {
+				t.Errorf("Error while logging: %v", err)
 			}
 
 			// Check logger format
 			// Note: This is a simplified check. In a real-world scenario, you might need to capture and parse log output.
 			if tt.config.Format == "json" {
-				if _, ok := logger.(log.Logger); !ok {
-					t.Errorf("Expected logger to be in json format, got %T", logger)
-				}
+				t.Errorf("Expected logger to be in json format, got %T", logger)
 			} else if tt.config.Format == "logfmt" {
-				if _, ok := logger.(log.Logger); !ok {
-					t.Errorf("Expected logger to be in logfmt format, got %T", logger)
-				}
+				t.Errorf("Expected logger to be in logfmt format, got %T", logger)
 			}
 		})
 	}
