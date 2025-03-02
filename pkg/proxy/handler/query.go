@@ -95,7 +95,7 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 	}
 
 	// Prepare final response
-	var finalResult interface{}
+	var finalResult interface{} = []interface{}{}
 
 	if resultType == loghttp.ResultTypeStream {
 		var formattedResults []map[string]interface{}
@@ -132,7 +132,10 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 				"values": values,
 			})
 		}
-		finalResult = formattedResults
+
+		if len(formattedResults) > 0 {
+			finalResult = formattedResults
+		}
 	} else if resultType == loghttp.ResultTypeMatrix {
 		var formattedMatrix []map[string]interface{}
 		for _, matrixEntry := range mergedMatrix {
@@ -148,7 +151,10 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 				"values": values,
 			})
 		}
-		finalResult = formattedMatrix
+
+		if len(formattedMatrix) > 0 {
+			finalResult = formattedMatrix
+		}
 	}
 
 	finalResponse := map[string]interface{}{
