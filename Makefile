@@ -26,6 +26,10 @@ imports:
 test:
 	GO111MODULE=on $(GO) test -race -mod=mod -tags netgo,builtinassets ./...
 
+.PHONY: run
+run:
+	$(GO) run cmd/main.go
+
 .PHONY: build
 build:
 	CGO_ENABLED=0 go build -mod=mod -tags netgo,builtinassets -x -o lokxy ./cmd/
