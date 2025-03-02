@@ -121,13 +121,19 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 	errors := make(chan error, len(config.ServerGroups))
 
 	// Read the original request body once
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		level.Error(logger).Log("msg", "Failed to read request body", "err", err)
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
+	var bodyBytes []byte
+	if r.Body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(r.Body)
+		if err != nil {
+			level.Error(logger).Log("msg", "Failed to read request body", "err", err)
+			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+			return
+		}
+		r.Body.Close()
+	} else {
+		bodyBytes = []byte{} // Ensure it's an empty body if nil
 	}
-	r.Body.Close() // Close the original request body
 
 	// Function to create a fresh reader for each request
 	bodyReader := func() io.ReadCloser {
