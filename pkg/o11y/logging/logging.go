@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
 	"github.com/paulojmdias/lokxy/pkg/config" // Import the config package
 )
 

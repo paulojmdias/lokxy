@@ -6,11 +6,16 @@ import (
 	"net/http"
 
 	"github.com/go-kit/log/level"
-
 	"github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/logging"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	"github.com/paulojmdias/lokxy/pkg/proxy"
+)
+
+// Build information, populated at build-time
+var (
+	Version  string
+	Revision string
 )
 
 func main() {
@@ -29,6 +34,9 @@ func main() {
 	// Set up logging
 	logger := logging.ConfigureLogger(cfg.Logging)
 
+	// Startup log
+	level.Info(logger).Log("msg", "Starting lokxy", "version", Version, "revision", Revision)
+
 	// Initialize Prometheus metrics
 	metrics.InitMetrics()
 
@@ -41,7 +49,7 @@ func main() {
 	})
 
 	// Start the HTTP server
-	level.Info(logger).Log("msg", "Starting lokxy", "addr", bindAddr)
+	level.Info(logger).Log("msg", "Listening", "addr", bindAddr)
 	if err := http.ListenAndServe(*bindAddr, nil); err != nil {
 		level.Info(logger).Log("msg", "Serving lokxy failed", "err", err)
 	}

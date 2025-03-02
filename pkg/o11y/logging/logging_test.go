@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
 	"github.com/paulojmdias/lokxy/pkg/config"
 )
 
@@ -49,11 +48,11 @@ func TestConfigureLogger(t *testing.T) {
 			// Check logger format
 			// Note: This is a simplified check. In a real-world scenario, you might need to capture and parse log output.
 			if tt.config.Format == "json" {
-				if _, ok := logger.(log.Logger); !ok {
+				if _, ok := any(logger).(log.Logger); !ok {
 					t.Errorf("Expected logger to be in json format, got %T", logger)
 				}
 			} else if tt.config.Format == "logfmt" {
-				if _, ok := logger.(log.Logger); !ok {
+				if _, ok := any(logger).(log.Logger); !ok {
 					t.Errorf("Expected logger to be in logfmt format, got %T", logger)
 				}
 			}
