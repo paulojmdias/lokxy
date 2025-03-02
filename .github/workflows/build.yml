@@ -14,13 +14,12 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: "1.23"
-      - name: install
-        run: |
-          go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: install dependencies
+        run: go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - name: Test
-        run: |
-          make test
-          make lint
+        run: make test
+      - name: Lint
+        run: make lint
   semantic_release:
     name: Semantic Release
     runs-on: ubuntu-latest
