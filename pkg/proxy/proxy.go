@@ -199,7 +199,13 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) 
 
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, resp.Body) // Forward the body as-is
+		_, err := io.Copy(w, resp.Body) // Forward the body as-is
+		if err != nil {
+			if err := level.Error(logger).Log("msg", "Failed to copy response body", "err", err); err != nil {
+				fmt.Println("Logging error:", err)
+			}
+			return
+		}
 		resp.Body.Close()
 	}
 }
