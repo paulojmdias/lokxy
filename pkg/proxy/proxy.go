@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
@@ -114,9 +115,14 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 	path := r.URL.Path
 	method := r.Method
 
+	var requestPool = sync.Pool{
+		New: func() interface{} {
+			return new(http.Request)
+		},
+	}
+
 	level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
 
-	var wg sync.WaitGroup
 	results := make(chan *http.Response, len(config.ServerGroups))
 	errors := make(chan error, len(config.ServerGroups))
 
@@ -137,20 +143,29 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 
 	// Function to create a fresh reader for each request
 	bodyReader := func() io.ReadCloser {
-		return io.NopCloser(strings.NewReader(string(bodyBytes)))
+		return io.NopCloser(bytes.NewReader(bodyBytes))
+	}
+
+	clients := make(map[string]*http.Client)
+	for _, instance := range config.ServerGroups {
+		client, err := createHTTPClient(instance, logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "Failed to create HTTP client", "instance", instance.Name, "err", err)
+			continue
+		}
+		clients[instance.Name] = client
 	}
 
 	// Forward requests using the custom RoundTripper
+	var wg sync.WaitGroup
 	for _, instance := range config.ServerGroups {
 		wg.Add(1)
 		go func(instance cfg.ServerGroup) {
 			defer wg.Done()
 
-			// Create an HTTP client for each instance
-			client, err := createHTTPClient(instance, logger)
-			if err != nil {
-				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
-				level.Error(logger).Log("msg", "Failed to create HTTP client", "instance", instance.Name, "err", err)
+			client, ok := clients[instance.Name]
+			if !ok {
+				level.Error(logger).Log("msg", "Missing HTTP client", "instance", instance.Name)
 				return
 			}
 
@@ -162,11 +177,17 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			// Record the request
 			metrics.RequestCount.WithLabelValues(path, method, instance.Name).Inc()
 
+			req := requestPool.Get().(*http.Request)
+			defer requestPool.Put(req)
 			req, err := http.NewRequest(r.Method, targetURL, bodyReader())
 			if err != nil {
 				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
 				level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
-				errors <- err
+				select {
+				case errors <- err:
+				default:
+					level.Warn(logger).Log("msg", "Skipping send to closed errors channel")
+				}
 				return
 			}
 
@@ -193,13 +214,19 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			duration := time.Since(startTime).Seconds()
 			metrics.RequestDuration.WithLabelValues(path, method, instance.Name).Observe(duration)
 
-			results <- resp
+			select {
+			case results <- resp:
+			default:
+				level.Warn(logger).Log("msg", "Skipping send to closed results channel")
+			}
 		}(instance)
 	}
 
-	wg.Wait()
-	close(results)
-	close(errors)
+	go func() {
+		wg.Wait()
+		close(results)
+		close(errors)
+	}()
 
 	if handlerFunc, ok := apiRoutes[path]; ok {
 		handlerFunc(w, results, logger) // Call appropriate handler

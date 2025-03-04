@@ -152,7 +152,10 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 			})
 		}
 
-		if len(formattedMatrix) > 0 {
+		// Ensure result is an empty array `[]` instead of `null`
+		if len(formattedMatrix) == 0 {
+			finalResult = []interface{}{}
+		} else {
 			finalResult = formattedMatrix
 		}
 	}
