@@ -35,20 +35,15 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 
 		// Decode into map[string]interface{} to inspect the raw structure
 		var rawBody map[string]interface{}
+		bodyStr := string(bodyBytes)
 		if json.Valid(bodyBytes) {
 			if err := json.Unmarshal(bodyBytes, &rawBody); err != nil {
-				level.Error(logger).Log("msg", "Failed to decode raw JSON", "err", err)
+				level.Error(logger).Log("msg", "Failed to decode JSON", "err", err)
 			} else {
-				rawBodyJSON, err := json.Marshal(rawBody)
-				if err != nil {
-					level.Error(logger).Log("msg", "Failed to marshal raw JSON for logging", "err", err)
-				} else {
-					level.Debug(logger).Log("msg", "Raw body structure", "rawBody", string(rawBodyJSON))
-				}
+				level.Debug(logger).Log("msg", "Raw JSON body", "rawBody", bodyStr)
 			}
 		} else {
-			// If not valid JSON, log it as a raw string instead
-			level.Debug(logger).Log("msg", "Raw body is not JSON", "rawBody", string(bodyBytes))
+			level.Debug(logger).Log("msg", "Raw body is not JSON", "rawBody", bodyStr)
 		}
 
 		// Check if encodingFlags is present in the response and extract it
