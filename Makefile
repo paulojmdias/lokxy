@@ -16,8 +16,11 @@ test:
 
 .PHONY: run
 run:
-	$(GO) run cmd/main.go
-  
+	$(GO) run \
+		-ldflags="-X main.Version=$(VERSION) \
+	  			  -X main.Revision=$(REVISION)" \
+		cmd/main.go
+
 .PHONY: lint
 lint:
 	$(GOLANGCI_LINT) run --timeout=5m
