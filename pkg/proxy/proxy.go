@@ -4,16 +4,16 @@ import (
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
@@ -73,7 +73,7 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 
 	// Load CA certificate if provided
 	if instance.HTTPClientConfig.TLSConfig.CAFile != "" {
-		caCert, err := ioutil.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
+		caCert, err := os.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
 		if err != nil {
 			return nil, err
 		}
@@ -184,12 +184,12 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 		handler.HandleTailWebSocket(w, r, config, logger)
 	} else {
 		level.Warn(logger).Log("msg", "No route matched, returning first response only")
-		forwardFirstResponse(w, results)
+		forwardFirstResponse(w, results, logger)
 	}
 }
 
 // Forward the first valid response for non-query endpoints
-func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) {
+func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	for resp := range results {
 		// Directly copy all headers and body from Loki response to Grafana
 		for key, values := range resp.Header {
@@ -200,8 +200,13 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) 
 
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body) // Forward the body as-is
+		_, err := io.Copy(w, resp.Body) // Forward the body as-is
+		if err != nil {
+			if err := level.Error(logger).Log("msg", "Failed to copy response body", "err", err); err != nil {
+				fmt.Println("Logging error:", err)
+			}
+			return
+		}
 		resp.Body.Close()
-		return
 	}
 }
