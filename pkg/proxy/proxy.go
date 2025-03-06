@@ -135,7 +135,7 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
 			return
 		}
-		r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	} else {
 		bodyBytes = []byte{} // Ensure it's an empty body if nil
 	}
