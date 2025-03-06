@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -183,12 +184,12 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 		handler.HandleTailWebSocket(w, r, config, logger)
 	} else {
 		level.Warn(logger).Log("msg", "No route matched, returning first response only")
-		forwardFirstResponse(w, results)
+		forwardFirstResponse(w, results, logger)
 	}
 }
 
 // Forward the first valid response for non-query endpoints
-func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response) {
+func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	for resp := range results {
 		// Directly copy all headers and body from Loki response to Grafana
 		for key, values := range resp.Header {
