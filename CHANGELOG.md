@@ -1,3 +1,10 @@
+# [0.2.0](https://github.com/paulojmdias/lokxy/compare/0.1.2...0.2.0) (2025-03-06)
+
+
+### Features
+
+* add output version and revision at startup and enable golangci-lint ([#16](https://github.com/paulojmdias/lokxy/issues/16)) ([1e79577](https://github.com/paulojmdias/lokxy/commit/1e795778741b237caa7c78194166c2685e86dcd9)), closes [#10](https://github.com/paulojmdias/lokxy/issues/10) [#12](https://github.com/paulojmdias/lokxy/issues/12)
+
 ## [0.1.2](https://github.com/paulojmdias/lokxy/compare/0.1.1...0.1.2) (2024-10-14)
 
 

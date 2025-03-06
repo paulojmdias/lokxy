@@ -6,16 +6,16 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
@@ -79,7 +79,7 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 
 	// Load CA certificate if provided
 	if instance.HTTPClientConfig.TLSConfig.CAFile != "" {
-		caCert, err := ioutil.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
+		caCert, err := os.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
 		if err != nil {
 			return nil, err
 		}
@@ -252,11 +252,11 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, 
 
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(resp.StatusCode)
-		_, err := io.Copy(w, resp.Body)
+		_, err := io.Copy(w, resp.Body) // Forward the body as-is
 		if err != nil {
 			level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
+			return
 		}
 		resp.Body.Close()
-		return
 	}
 }
