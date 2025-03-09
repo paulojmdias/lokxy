@@ -22,7 +22,7 @@ scrape_configs:
       - targets:
           - localhost
         labels:
-          job: "flog-generator-2"
+          job: "flog2"
           __path__: "/tmp/flog2.log"
     pipeline_stages:
       - json:
