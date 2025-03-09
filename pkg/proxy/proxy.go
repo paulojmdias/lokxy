@@ -136,8 +136,6 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-	} else {
-		bodyBytes = []byte{} // Ensure it's an empty body if nil
 	}
 
 	// Function to create a fresh reader for each request
