@@ -78,7 +78,7 @@ services:
     image: mingrammer/flog:latest
     volumes:
       - /tmp:/tmp
-    command: -f json -d 500ms -l -o /tmp/flog2.log -t log -w
+    command: -f common_log -d 500ms -l -o /tmp/flog2.log -t log -w
     networks:
       - play
 
