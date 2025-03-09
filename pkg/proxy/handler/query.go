@@ -35,13 +35,16 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 
 		// Decode into map[string]interface{} to inspect the raw structure
 		var rawBody map[string]interface{}
-		if err := json.Unmarshal(bodyBytes, &rawBody); err != nil {
-			level.Error(logger).Log("msg", "Failed to decode raw JSON", "err", err)
-			continue
+		bodyStr := string(bodyBytes)
+		if json.Valid(bodyBytes) {
+			if err := json.Unmarshal(bodyBytes, &rawBody); err != nil {
+				level.Error(logger).Log("msg", "Failed to decode JSON", "err", err)
+			} else {
+				level.Debug(logger).Log("msg", "Raw JSON body", "rawBody", bodyStr)
+			}
+		} else {
+			level.Debug(logger).Log("msg", "Raw body is not JSON", "rawBody", bodyStr)
 		}
-
-		// Log raw body structure for debugging
-		level.Debug(logger).Log("msg", "Raw body structure", "rawBody", rawBody)
 
 		// Check if encodingFlags is present in the response and extract it
 		if data, ok := rawBody["data"].(map[string]interface{}); ok {
@@ -87,7 +90,7 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 	}
 
 	// Prepare final response
-	var finalResult interface{}
+	var finalResult interface{} = []interface{}{}
 
 	if resultType == loghttp.ResultTypeStream {
 		var formattedResults []map[string]interface{}
@@ -124,7 +127,10 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 				"values": values,
 			})
 		}
-		finalResult = formattedResults
+
+		if len(formattedResults) > 0 {
+			finalResult = formattedResults
+		}
 	} else if resultType == loghttp.ResultTypeMatrix {
 		var formattedMatrix []map[string]interface{}
 		for _, matrixEntry := range mergedMatrix {
@@ -140,7 +146,13 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 				"values": values,
 			})
 		}
-		finalResult = formattedMatrix
+
+		// Ensure result is an empty array `[]` instead of `null`
+		if len(formattedMatrix) == 0 {
+			finalResult = []interface{}{}
+		} else {
+			finalResult = formattedMatrix
+		}
 	}
 
 	finalResponse := map[string]interface{}{

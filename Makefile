@@ -14,6 +14,13 @@ clean:
 test:
 	GO111MODULE=on $(GO) test -race -mod=mod -tags netgo,builtinassets ./...
 
+.PHONY: run
+run:
+	$(GO) run \
+		-ldflags="-X main.Version=$(VERSION) \
+	  			  -X main.Revision=$(REVISION)" \
+		cmd/main.go
+
 .PHONY: lint
 lint:
 	$(GOLANGCI_LINT) run --timeout=5m
