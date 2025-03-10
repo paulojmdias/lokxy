@@ -16,6 +16,7 @@ import (
 func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
+	var mergedVector loghttp.Vector
 	var resultType loghttp.ResultType
 	var mergedStats stats.Result
 	var encodingFlagsMap = make(map[string]struct{})
@@ -83,6 +84,14 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 				continue
 			}
 			mergedMatrix = append(mergedMatrix, matrix...)
+
+		case loghttp.ResultTypeVector:
+			vector, ok := queryResult.Data.Result.(loghttp.Vector)
+			if !ok {
+				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Vector")
+				continue
+			}
+			mergedVector = append(mergedVector, vector...)
 		}
 
 		// Merge statistics
@@ -92,7 +101,8 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 	// Prepare final response
 	var finalResult interface{} = []interface{}{}
 
-	if resultType == loghttp.ResultTypeStream {
+	switch resultType {
+	case loghttp.ResultTypeStream:
 		var formattedResults []map[string]interface{}
 		for _, stream := range mergedStreams {
 			values := make([][]interface{}, len(stream.Entries))
@@ -127,11 +137,9 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 				"values": values,
 			})
 		}
+		finalResult = formattedResults
 
-		if len(formattedResults) > 0 {
-			finalResult = formattedResults
-		}
-	} else if resultType == loghttp.ResultTypeMatrix {
+	case loghttp.ResultTypeMatrix:
 		var formattedMatrix []map[string]interface{}
 		for _, matrixEntry := range mergedMatrix {
 			values := make([][]interface{}, len(matrixEntry.Values))
@@ -146,13 +154,20 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 				"values": values,
 			})
 		}
+		finalResult = formattedMatrix
 
-		// Ensure result is an empty array `[]` instead of `null`
-		if len(formattedMatrix) == 0 {
-			finalResult = []interface{}{}
-		} else {
-			finalResult = formattedMatrix
+	case loghttp.ResultTypeVector:
+		var formattedVector []map[string]interface{}
+		for _, vectorEntry := range mergedVector {
+			formattedVector = append(formattedVector, map[string]interface{}{
+				"metric": vectorEntry.Metric,
+				"value": []interface{}{
+					vectorEntry.Timestamp,
+					vectorEntry.Value,
+				},
+			})
 		}
+		finalResult = formattedVector
 	}
 
 	finalResponse := map[string]interface{}{
