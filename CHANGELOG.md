@@ -1,3 +1,17 @@
+## [0.2.1](https://github.com/paulojmdias/lokxy/compare/0.2.0...0.2.1) (2025-03-10)
+
+
+### Bug Fixes
+
+* avoid output null ([856a52f](https://github.com/paulojmdias/lokxy/commit/856a52fe12269ebe3e61b506b0a3de12d25fc099))
+* fix request body for working with multiple goroutines ([f61133b](https://github.com/paulojmdias/lokxy/commit/f61133b260b1bdedbd433d03c1db62cfc7ac7745))
+* fix request body for working with multiple goroutines ([#19](https://github.com/paulojmdias/lokxy/issues/19)) ([4d5e76d](https://github.com/paulojmdias/lokxy/commit/4d5e76dc930dfe04cf45944ab51a6cf856e49f82))
+* fix tests ([c830a31](https://github.com/paulojmdias/lokxy/commit/c830a3184ff7858d71d6cf549d2638d2c4e58b84))
+* improve json unmarshall ([8041829](https://github.com/paulojmdias/lokxy/commit/8041829205035f59ff089ab8a5925d99830ba764))
+* improve r.body ([cfc7ed4](https://github.com/paulojmdias/lokxy/commit/cfc7ed43eb7ac7498599246390dfc34ec8e014a2))
+* improvements to avoid results being null ([fc53c25](https://github.com/paulojmdias/lokxy/commit/fc53c2538d13aa78cb45c4b6810c24a2e0f802dc))
+* remove uneeded else condition ([030e94f](https://github.com/paulojmdias/lokxy/commit/030e94f38e8626f90c69c531ce6422faffcab82a))
+
 # [0.2.0](https://github.com/paulojmdias/lokxy/compare/0.1.2...0.2.0) (2025-03-06)
 
 
