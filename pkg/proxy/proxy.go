@@ -1,10 +1,11 @@
 package proxy
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -36,7 +37,12 @@ type CustomRoundTripper struct {
 
 // RoundTrip method allows us to inspect and modify requests/responses
 func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL, "headers", req.Header)
+	headersJSON, err := json.Marshal(req.Header)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "Failed to marshal headers for logging", "err", err)
+	} else {
+		level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL.String(), "headers", string(headersJSON))
+	}
 
 	// Perform the actual request
 	resp, err := c.rt.RoundTrip(req)
@@ -50,8 +56,7 @@ func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		if err != nil {
 			return nil, err
 		}
-		defer gzReader.Close()
-		resp.Body = gzReader
+		resp.Body = io.NopCloser(gzReader) // Prevent early closure
 	}
 
 	// Add any custom behavior for the response here, if needed
@@ -109,23 +114,55 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 	path := r.URL.Path
 	method := r.Method
 
+	var requestPool = sync.Pool{
+		New: func() interface{} {
+			return new(http.Request)
+		},
+	}
+
 	level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
 
-	var wg sync.WaitGroup
 	results := make(chan *http.Response, len(config.ServerGroups))
 	errors := make(chan error, len(config.ServerGroups))
 
+	// Read the original request body once
+	var bodyBytes []byte
+	if r.Body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(r.Body)
+		if err != nil {
+			level.Error(logger).Log("msg", "Failed to read request body", "err", err)
+			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	}
+
+	// Function to create a fresh reader for each request
+	bodyReader := func() io.ReadCloser {
+		return io.NopCloser(bytes.NewReader(bodyBytes))
+	}
+
+	clients := make(map[string]*http.Client)
+	for _, instance := range config.ServerGroups {
+		client, err := createHTTPClient(instance, logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "Failed to create HTTP client", "instance", instance.Name, "err", err)
+			continue
+		}
+		clients[instance.Name] = client
+	}
+
 	// Forward requests using the custom RoundTripper
+	var wg sync.WaitGroup
 	for _, instance := range config.ServerGroups {
 		wg.Add(1)
 		go func(instance cfg.ServerGroup) {
 			defer wg.Done()
 
-			// Create an HTTP client for each instance
-			client, err := createHTTPClient(instance, logger)
-			if err != nil {
-				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
-				level.Error(logger).Log("msg", "Failed to create HTTP client", "instance", instance.Name, "err", err)
+			client, ok := clients[instance.Name]
+			if !ok {
+				level.Error(logger).Log("msg", "Missing HTTP client", "instance", instance.Name)
 				return
 			}
 
@@ -137,11 +174,17 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			// Record the request
 			metrics.RequestCount.WithLabelValues(path, method, instance.Name).Inc()
 
-			req, err := http.NewRequest(r.Method, targetURL, r.Body)
+			req := requestPool.Get().(*http.Request)
+			defer requestPool.Put(req)
+			req, err := http.NewRequest(r.Method, targetURL, bodyReader())
 			if err != nil {
 				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
 				level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
-				errors <- err
+				select {
+				case errors <- err:
+				default:
+					level.Warn(logger).Log("msg", "Skipping send to closed errors channel")
+				}
 				return
 			}
 
@@ -168,13 +211,19 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			duration := time.Since(startTime).Seconds()
 			metrics.RequestDuration.WithLabelValues(path, method, instance.Name).Observe(duration)
 
-			results <- resp
+			select {
+			case results <- resp:
+			default:
+				level.Warn(logger).Log("msg", "Skipping send to closed results channel")
+			}
 		}(instance)
 	}
 
-	wg.Wait()
-	close(results)
-	close(errors)
+	go func() {
+		wg.Wait()
+		close(results)
+		close(errors)
+	}()
 
 	if handlerFunc, ok := apiRoutes[path]; ok {
 		handlerFunc(w, results, logger) // Call appropriate handler
@@ -202,9 +251,7 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, 
 		w.WriteHeader(resp.StatusCode)
 		_, err := io.Copy(w, resp.Body) // Forward the body as-is
 		if err != nil {
-			if err := level.Error(logger).Log("msg", "Failed to copy response body", "err", err); err != nil {
-				fmt.Println("Logging error:", err)
-			}
+			level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
 			return
 		}
 		resp.Body.Close()
