@@ -34,8 +34,8 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		// Log the full body for debugging
 		level.Debug(logger).Log("msg", "Complete body received", "body", string(bodyBytes))
 
-		// Decode into map[string]interface{} to inspect the raw structure
-		var rawBody map[string]interface{}
+		// Decode into map[string]any to inspect the raw structure
+		var rawBody map[string]any
 		bodyStr := string(bodyBytes)
 		if json.Valid(bodyBytes) {
 			if err := json.Unmarshal(bodyBytes, &rawBody); err != nil {
@@ -48,8 +48,8 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		}
 
 		// Check if encodingFlags is present in the response and extract it
-		if data, ok := rawBody["data"].(map[string]interface{}); ok {
-			if flags, ok := data["encodingFlags"].([]interface{}); ok {
+		if data, ok := rawBody["data"].(map[string]any); ok {
+			if flags, ok := data["encodingFlags"].([]any); ok {
 				for _, flag := range flags {
 					if flagStr, ok := flag.(string); ok {
 						encodingFlagsMap[flagStr] = struct{}{} // Add to map for uniqueness
@@ -99,21 +99,21 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 	}
 
 	// Prepare final response
-	var finalResult interface{} = []interface{}{}
+	var finalResult any = []any{}
 
 	switch resultType {
 	case loghttp.ResultTypeStream:
-		var formattedResults []map[string]interface{}
+		var formattedResults []map[string]any
 		for _, stream := range mergedStreams {
-			values := make([][]interface{}, len(stream.Entries))
+			values := make([][]any, len(stream.Entries))
 			for i, entry := range stream.Entries {
-				values[i] = []interface{}{
+				values[i] = []any{
 					strconv.FormatInt(entry.Timestamp.UnixNano(), 10),
 					entry.Line,
 				}
 
 				// Create a map to hold both structuredMetadata and parsed, if they exist
-				metadata := make(map[string]interface{})
+				metadata := make(map[string]any)
 
 				// Add structuredMetadata if it exists
 				if len(entry.StructuredMetadata) > 0 {
@@ -132,7 +132,7 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 			}
 
 			// Add each stream and its corresponding values to the result
-			formattedResults = append(formattedResults, map[string]interface{}{
+			formattedResults = append(formattedResults, map[string]any{
 				"stream": stream.Labels,
 				"values": values,
 			})
@@ -140,16 +140,16 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		finalResult = formattedResults
 
 	case loghttp.ResultTypeMatrix:
-		var formattedMatrix []map[string]interface{}
+		var formattedMatrix []map[string]any
 		for _, matrixEntry := range mergedMatrix {
-			values := make([][]interface{}, len(matrixEntry.Values))
+			values := make([][]any, len(matrixEntry.Values))
 			for i, value := range matrixEntry.Values {
-				values[i] = []interface{}{
+				values[i] = []any{
 					value.Timestamp.Unix(),
 					value.Value,
 				}
 			}
-			formattedMatrix = append(formattedMatrix, map[string]interface{}{
+			formattedMatrix = append(formattedMatrix, map[string]any{
 				"metric": matrixEntry.Metric,
 				"values": values,
 			})
@@ -157,11 +157,11 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		finalResult = formattedMatrix
 
 	case loghttp.ResultTypeVector:
-		var formattedVector []map[string]interface{}
+		var formattedVector []map[string]any
 		for _, vectorEntry := range mergedVector {
-			formattedVector = append(formattedVector, map[string]interface{}{
+			formattedVector = append(formattedVector, map[string]any{
 				"metric": vectorEntry.Metric,
-				"value": []interface{}{
+				"value": []any{
 					vectorEntry.Timestamp,
 					vectorEntry.Value,
 				},
@@ -170,9 +170,9 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		finalResult = formattedVector
 	}
 
-	finalResponse := map[string]interface{}{
+	finalResponse := map[string]any{
 		"status": "success",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"resultType": resultType,
 			"result":     finalResult,
 			"stats":      mergedStats,
@@ -187,7 +187,7 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 
 	// Only add encodingFlags if it's defined in any of the responses
 	if len(encodingFlags) > 0 {
-		finalResponse["data"].(map[string]interface{})["encodingFlags"] = encodingFlags
+		finalResponse["data"].(map[string]any)["encodingFlags"] = encodingFlags
 	}
 
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
