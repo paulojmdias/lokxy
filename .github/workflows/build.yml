@@ -1,27 +1,16 @@
-name: CI/CD with Tests, Semantic Release, GoReleaser and Docker Build
+name: Release
 
 on:
   push:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
-  tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: "1.23"
-      - name: install dependencies
-        run: go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-      - name: Test
-        run: make test
-      - name: Lint
-        run: make lint
-  semantic_release:
-    name: Semantic Release
+  goreleaser:
+    name: Release
     runs-on: ubuntu-latest
     needs: tests
     outputs:
@@ -30,27 +19,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          fetch-depth: 0
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          go-version: "1.23"
-      - name: Install GoReleaser
-        run: go install github.com/goreleaser/goreleaser/v2@latest
-      - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@v4
-        with:
-          extra_plugins: |
-            @semantic-release/exec
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-      - id: get-version
-        run: echo "VERSION=$(cat VERSION)" >> $GITHUB_OUTPUT
   docker_build:
     name: Docker build
     runs-on: ubuntu-latest
     needs: semantic_release
     steps:
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            lokxy/lokxy
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
       - uses: actions/checkout@v2
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -66,9 +64,7 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: |
-            LOKXY_VERSION=${{ needs.semantic_release.outputs.version }}
-          tags: |
-            lokxy/lokxy:${{ github.ref_name == 'main' && 'latest' || github.ref_name }},lokxy/lokxy:${{ needs.semantic_release.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=lokxy/lokxy:latest
           cache-to: type=inline,mode=max
