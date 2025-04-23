@@ -75,7 +75,7 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 
 	// Create a WaitGroup to handle multiple WebSocket connections
 	var wg sync.WaitGroup
-	mergedResponses := make(chan map[string]interface{})
+	mergedResponses := make(chan map[string]any)
 
 	// Loop through each Loki instance and create WebSocket connections
 	for _, instance := range config.ServerGroups {
@@ -139,7 +139,7 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 				}
 
 				// Parse and forward the message to the merged response channel
-				var result map[string]interface{}
+				var result map[string]any
 				if err := json.Unmarshal(message, &result); err != nil {
 					metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
 					level.Error(logger).Log("msg", "Failed to decode WebSocket message", "instance", instance.Name, "err", err)

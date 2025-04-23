@@ -40,7 +40,7 @@ func HandleLokiSeries(w http.ResponseWriter, results <-chan *http.Response, logg
 	level.Debug(logger).Log("msg", "Merged series", "series", mergedSeries)
 
 	// Prepare final response
-	finalResponse := map[string]interface{}{
+	finalResponse := map[string]any{
 		"status": "success",
 		"data":   mergedSeries,
 	}

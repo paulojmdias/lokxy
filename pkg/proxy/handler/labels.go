@@ -52,7 +52,7 @@ func HandleLokiLabels(w http.ResponseWriter, results <-chan *http.Response, logg
 	sort.Strings(finalLabelValues)
 
 	// Encode the final response
-	finalResponse := map[string]interface{}{
+	finalResponse := map[string]any{
 		"status": "success",
 		"data":   finalLabelValues,
 	}
