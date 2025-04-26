@@ -7,9 +7,8 @@ on:
 
 jobs:
   docker_build_main:
-    name: Docker build
+    name: Docker build (main)
     runs-on: ubuntu-latest
-    needs: goreleaser
     steps:
       - name: Docker meta
         id: meta
