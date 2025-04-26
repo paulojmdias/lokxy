@@ -115,7 +115,7 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 	method := r.Method
 
 	var requestPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(http.Request)
 		},
 	}
