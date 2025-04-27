@@ -21,12 +21,12 @@ type Entry struct {
 // LokiMetricStream represents a matrix or vector result for metrics queries
 type LokiMetricStream struct {
 	Metric map[string]string `json:"metric"`
-	Value  []interface{}     `json:"value"`  // For vector results (single value per metric)
-	Values [][]interface{}   `json:"values"` // For matrix results (multiple values over time)
+	Value  []any             `json:"value"`  // For vector results (single value per metric)
+	Values [][]any           `json:"values"` // For matrix results (multiple values over time)
 }
 
 // LokiMatrixStream represents a single matrix stream in Loki (used for range queries)
 type LokiMatrixStream struct {
 	Metric map[string]string `json:"metric"`
-	Values [][]interface{}   `json:"values"` // Array of [timestamp, value] pairs
+	Values [][]any           `json:"values"` // Array of [timestamp, value] pairs
 }

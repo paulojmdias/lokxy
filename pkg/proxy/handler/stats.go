@@ -42,7 +42,7 @@ func HandleLokiStats(w http.ResponseWriter, results <-chan *http.Response, logge
 	}
 
 	// Prepare final merged stats response
-	finalStatsResponse := map[string]interface{}{
+	finalStatsResponse := map[string]any{
 		"streams": totalStreams,
 		"chunks":  totalChunks,
 		"bytes":   totalBytes,
