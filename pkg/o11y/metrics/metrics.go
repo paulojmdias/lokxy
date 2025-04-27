@@ -18,7 +18,7 @@ var (
 	RequestFailures metric.Int64Counter
 )
 
-func InitMetrics(ctx context.Context) (*sdkmetric.MeterProvider, error) {
+func InitMetrics(_ context.Context) (*sdkmetric.MeterProvider, error) {
 	promExporter, err := prometheus.New()
 	if err != nil {
 		return nil, err
