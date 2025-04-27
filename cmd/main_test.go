@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -10,6 +10,7 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/o11y/logging"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	"github.com/paulojmdias/lokxy/pkg/proxy"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func TestMainFunction(t *testing.T) {
@@ -51,37 +52,73 @@ server_groups:
 	logger := logging.ConfigureLogger(cfg.Logging)
 
 	// Initialize Prometheus metrics
-	metrics.InitMetrics()
+	ctx := context.Background()
+	meterProvider, err := metrics.InitMetrics(ctx)
+	if err != nil {
+		t.Fatalf("Failed to initialize Prometheus metrics: %v", err)
+	}
+	defer meterProvider.Shutdown(ctx)
+
+	// Create a test server with shutdown capability
+	server := &http.Server{
+		Addr:    ":9091",
+		Handler: http.DefaultServeMux,
+	}
 
 	// Register Prometheus metrics handler
-	http.Handle("/metrics", metrics.PrometheusHandler())
+	http.Handle("/metrics", promhttp.Handler())
 
-	// Register the proxy handler for all other requests
+	// Register the proxy handler
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		proxy.ProxyHandler(w, r, cfg, logger)
 	})
 
-	// Test the /metrics endpoint
-	req, err := http.NewRequest("GET", "/metrics", nil)
-	if err != nil {
-		t.Fatalf("Failed to create request: %v", err)
-	}
-	rr := httptest.NewRecorder()
-	http.DefaultServeMux.ServeHTTP(rr, req)
+	// Channel to signal server shutdown
+	serverClosed := make(chan struct{})
 
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
-	}
+	// Start the server in a goroutine
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			t.Errorf("Server failed: %v", err)
+		}
+		close(serverClosed)
+	}()
+
+	// Test the /metrics endpoint
+	t.Run("test metrics endpoint", func(t *testing.T) {
+		resp, err := http.Get("http://localhost:9091/metrics")
+		if err != nil {
+			t.Fatalf("Failed to get metrics: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Handler returned wrong status code: got %v want %v", resp.StatusCode, http.StatusOK)
+		}
+	})
 
 	// Test the proxy handler
-	req, err = http.NewRequest("GET", "/", nil)
-	if err != nil {
-		t.Fatalf("Failed to create request: %v", err)
-	}
-	rr = httptest.NewRecorder()
-	http.DefaultServeMux.ServeHTTP(rr, req)
+	t.Run("test proxy handler", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "http://localhost:9091/", nil)
+		if err != nil {
+			t.Fatalf("Failed to create request: %v", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Failed to make request: %v", err)
+		}
+		defer resp.Body.Close()
 
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Handler returned wrong status code: got %v want %v", resp.StatusCode, http.StatusOK)
+		}
+	})
+
+	// Shutdown the server
+	if err := server.Shutdown(context.Background()); err != nil {
+		t.Errorf("Failed to shutdown server: %v", err)
 	}
+
+	// Wait for server to close
+	<-serverClosed
 }

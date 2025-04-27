@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -15,6 +16,8 @@ import (
 	"github.com/gorilla/websocket"
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // WebSocket upgrader to upgrade the HTTP connection to a WebSocket connection
@@ -83,7 +86,8 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 
 		go func(instance cfg.ServerGroup) {
 			defer wg.Done()
-
+			// Create context for this goroutine
+			ctx := context.Background()
 			// Build the WebSocket target URL
 			targetURL := instance.URL
 			if strings.HasPrefix(targetURL, "http://") {
@@ -102,14 +106,22 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 			// Create WebSocket dialer with TLS config
 			dialer, err := createWebSocketDialer(instance, logger)
 			if err != nil {
-				metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
+				// Record error count
+				metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+					attribute.String("path", "/loki/api/v1/tail"),
+					attribute.String("method", "GET"),
+					attribute.String("instance", instance.Name),
+				))
 				level.Error(logger).Log("msg", "Failed to create WebSocket dialer", "instance", instance.Name, "err", err)
 				return
 			}
 
 			// Record the request
-			metrics.RequestCount.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc()
-
+			metrics.RequestCount.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("path", "/loki/api/v1/tail"),
+				attribute.String("method", "GET"),
+				attribute.String("instance", instance.Name),
+			))
 			// Create WebSocket connection to Loki instance
 			headers := http.Header{}
 			for key, value := range instance.Headers {
@@ -118,10 +130,20 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 
 			backendConn, resp, err := dialer.Dial(targetURL, headers)
 			if err != nil {
-				metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
+				// Record error count
+				metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+					attribute.String("path", "/loki/api/v1/tail"),
+					attribute.String("method", "GET"),
+					attribute.String("instance", instance.Name),
+				))
 				level.Error(logger).Log("msg", "Failed to connect to Loki WebSocket", "instance", instance.Name, "err", err)
 				if resp != nil {
-					metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
+					// Record error count
+					metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+						attribute.String("path", "/loki/api/v1/tail"),
+						attribute.String("method", "GET"),
+						attribute.String("instance", instance.Name),
+					))
 					body, _ := io.ReadAll(resp.Body)
 					level.Error(logger).Log("msg", "Handshake response", "status", resp.StatusCode, "body", string(body))
 				}
@@ -133,7 +155,11 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 			for {
 				_, message, err := backendConn.ReadMessage()
 				if err != nil {
-					metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
+					metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+						attribute.String("path", "/loki/api/v1/tail"),
+						attribute.String("method", "GET"),
+						attribute.String("instance", instance.Name),
+					))
 					level.Error(logger).Log("msg", "Error reading WebSocket message", "instance", instance.Name, "err", err)
 					return
 				}
@@ -141,7 +167,13 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 				// Parse and forward the message to the merged response channel
 				var result map[string]any
 				if err := json.Unmarshal(message, &result); err != nil {
-					metrics.RequestFailures.WithLabelValues("/loki/api/v1/tail", "GET", instance.Name).Inc() // Record error count
+
+					// Record error count
+					metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+						attribute.String("path", "/loki/api/v1/tail"),
+						attribute.String("method", "GET"),
+						attribute.String("instance", instance.Name),
+					))
 					level.Error(logger).Log("msg", "Failed to decode WebSocket message", "instance", instance.Name, "err", err)
 					return
 				}

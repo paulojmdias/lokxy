@@ -1,40 +1,64 @@
 package metrics
 
 import (
-	"net/http"
+	"context"
+	"log"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
 var (
-	// Define Prometheus metrics
-	RequestCount    *prometheus.CounterVec
-	RequestDuration *prometheus.HistogramVec
-	RequestFailures *prometheus.CounterVec
+	RequestCount    metric.Int64Counter
+	RequestDuration metric.Float64Histogram
+	RequestFailures metric.Int64Counter
 )
 
-// Initialize metrics and register them with the default registry
-func InitMetrics() {
-	RequestCount = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "lokxy_request_count_total",
-		Help: "Total number of requests processed by the proxy",
-	}, []string{"path", "method", "server_group"})
+func InitMetrics(ctx context.Context) (*sdkmetric.MeterProvider, error) {
+	promExporter, err := prometheus.New()
+	if err != nil {
+		return nil, err
+	}
 
-	RequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "lokxy_request_duration_seconds",
-		Help:    "Duration of proxy requests in seconds",
-		Buckets: prometheus.DefBuckets,
-	}, []string{"path", "method", "server_group"})
+	// Use NewSchemaless to avoid schema version conflicts
+	lokxyResource := resource.NewSchemaless(
+		semconv.ServiceNameKey.String("lokxy"),
+	)
 
-	RequestFailures = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "lokxy_request_failures_total",
-		Help: "Total number of failed requests.",
-	}, []string{"path", "method", "server_group"})
-}
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(promExporter),
+		sdkmetric.WithResource(lokxyResource),
+	)
 
-// PrometheusHandler returns an HTTP handler for Prometheus metrics
-func PrometheusHandler() http.Handler {
-	return promhttp.Handler()
+	otel.SetMeterProvider(meterProvider)
+
+	meter := otel.Meter("lokxy")
+
+	RequestCount, err = meter.Int64Counter("lokxy_request_count_total",
+		metric.WithDescription("Total number of requests processed by the proxy"),
+	)
+	if err != nil {
+		log.Fatalf("failed to create RequestCount metric")
+	}
+
+	RequestDuration, err = meter.Float64Histogram("lokxy_request_duration_seconds",
+		metric.WithDescription("Duration of proxy requests in seconds"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create RequestDuration metric: %v", err)
+	}
+
+	RequestFailures, err = meter.Int64Counter("lokxy_request_failures_total",
+		metric.WithDescription("Total number of failed requests"),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create RequestFailures metric: %v", err)
+	}
+
+	return meterProvider, nil
 }

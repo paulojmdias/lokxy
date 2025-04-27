@@ -1,0 +1,17 @@
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'lokxy'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['lokxy:9091']
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      exporters: [debug]
