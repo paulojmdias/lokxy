@@ -23,7 +23,7 @@ run:
 
 .PHONY: lint
 lint:
-	$(GOLANGCI_LINT) run --timeout=5m
+	$(GOLANGCI_LINT) run --timeout=10m
 
 .PHONY: build
 build:
