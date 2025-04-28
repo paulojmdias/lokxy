@@ -16,7 +16,8 @@ metadata:
 report_sizes: true
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     files:
       - LICENSE
 
