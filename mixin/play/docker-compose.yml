@@ -90,6 +90,22 @@ services:
       - "3100:3100"
     expose:
       - 3100
-    command: lokxy --config /config/lokxy.yaml --bind-addr=:3100
+    command: lokxy --config /config/lokxy.yaml --bind-addr=:3100  --metrics-addr=:9091
+    networks:
+      - play
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector:/etc/
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
     networks:
       - play

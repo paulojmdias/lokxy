@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -18,6 +19,8 @@ import (
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Varible to hold the API routes and their corresponding handlers
@@ -160,6 +163,9 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 		go func(instance cfg.ServerGroup) {
 			defer wg.Done()
 
+			// Create context for this goroutine
+			ctx := context.Background()
+
 			client, ok := clients[instance.Name]
 			if !ok {
 				level.Error(logger).Log("msg", "Missing HTTP client", "instance", instance.Name)
@@ -172,13 +178,23 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			}
 
 			// Record the request
-			metrics.RequestCount.WithLabelValues(path, method, instance.Name).Inc()
+			metrics.RequestCount.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("path", r.URL.Path),
+				attribute.String("method", r.Method),
+				attribute.String("instance", instance.Name),
+			))
 
+			// does it make sense to have polling when is being overwriting by the next request?
 			req := requestPool.Get().(*http.Request)
 			defer requestPool.Put(req)
 			req, err := http.NewRequest(r.Method, targetURL, bodyReader())
 			if err != nil {
-				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
+				// Record error count
+				metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+					attribute.String("path", r.URL.Path),
+					attribute.String("method", r.Method),
+					attribute.String("instance", instance.Name),
+				))
 				level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
 				select {
 				case errors <- err:
@@ -201,15 +217,25 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 
 			resp, err := client.Do(req)
 			if err != nil {
-				metrics.RequestFailures.WithLabelValues(path, method, instance.Name).Inc() // Record error count
+				// Record error count
+				metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+					attribute.String("path", r.URL.Path),
+					attribute.String("method", r.Method),
+					attribute.String("instance", instance.Name),
+				))
 				level.Error(logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
 				errors <- err
 				return
 			}
 
 			// Measure response time
-			duration := time.Since(startTime).Seconds()
-			metrics.RequestDuration.WithLabelValues(path, method, instance.Name).Observe(duration)
+			metrics.RequestDuration.Record(ctx, time.Since(startTime).Seconds(),
+				metric.WithAttributes(
+					attribute.String("path", r.URL.Path),
+					attribute.String("method", r.Method),
+					attribute.String("instance", instance.Name),
+				),
+			)
 
 			select {
 			case results <- resp:
