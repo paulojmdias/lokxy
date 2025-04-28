@@ -44,9 +44,9 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{raw}}
+            type=semver,pattern=v{{major}}.{{minor}}
+            type=semver,pattern=v{{major}}
             type=sha
       - uses: actions/checkout@v4
       - name: Set up QEMU
@@ -68,4 +68,4 @@ jobs:
           cache-from: type=registry,ref=lokxy/lokxy:latest
           cache-to: type=inline,mode=max
           build-args: |
-            LOKXY_VERSION={{version}}
+            LOKXY_VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
