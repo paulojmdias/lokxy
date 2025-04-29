@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "lokxy.fullname" . }}
+  namespace: {{ include "lokxy.namespace" . }}
+  labels:
+    {{- include "lokxy.common.matchLabels" . | nindent 4 }}
+    {{- include "lokxy.common.metaLabels" . | nindent 4 }}
+data:
+  lokxy.yaml: |
+    {{- tpl .Values.config . | nindent 4 }}

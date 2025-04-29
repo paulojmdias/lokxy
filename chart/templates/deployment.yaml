@@ -1,0 +1,70 @@
+apiVersion: {{ template "lokxy.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ template "lokxy.fullname" . }}
+  namespace: {{ include "lokxy.namespace" . }}
+  labels:
+    {{- include "lokxy.common.matchLabels" . | nindent 4 }}
+    {{- include "lokxy.common.metaLabels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.deployment.annotations | nindent 4 }}
+spec:
+  replicas: {{ .Values.deployment.replicaCount }}
+  revisionHistoryLimit: {{ .Values.deployment.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "lokxy.common.matchLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "lokxy.common.matchLabels" . | nindent 8 }}
+        {{- include "lokxy.common.metaLabels" . | nindent 8 }}
+      annotations:
+        {{- toYaml .Values.deployment.podAnnotations | nindent 8 }}
+    spec:
+      containers:
+        - name: lokxy
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.deployment.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          args:
+             - --config=/etc/lokxy/lokxy.yaml
+             - --bind-addr=:{{ .Values.ports.service }}
+             - --metrics-addr=:{{ .Values.ports.metrics }}
+            {{- range .Values.deployment.extraFlags }}
+            - --{{ . }}
+            {{- end }}
+            {{- range $key, $value := .Values.deployment.extraArgs }}
+              {{- if $value }}
+              - --{{ $key }}={{ $value }}
+              {{- else }}
+              - --{{ $key }}
+              {{- end }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.service }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.ports.metrics }}
+              protocol: TCP
+          env:
+            {{- toYaml .Values.deployment.env | nindent 12 }}
+          volumeMounts:
+            - name: lokxy-config
+              mountPath: /etc/lokxy
+          {{- with .Values.deployment.extraVolumeMounts }}
+          {{ toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.deployment.resources | nindent 12 }}
+      volumes:
+        - name: lokxy-config
+          configMap:
+            name: {{ include "lokxy.fullname" . }}
+      {{- with .Values.deployment.extraVolumes }}
+      {{ toYaml . | nindent 8 }}
+      {{- end }}

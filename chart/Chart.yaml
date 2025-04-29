@@ -1,0 +1,21 @@
+apiVersion: v2
+name: lokxy
+# renovate: github=prometheus/prometheus
+appVersion: v0.3.0
+version: 0.0.1
+kubeVersion: ">=1.19.0-0"
+description: Lokxy is a powerful log aggregator for Loki
+maintainers:
+  - name: paulojmdias
+    email: me@paulodias.xyz
+    url: https://github.com/paulojmdias
+type: application
+keywords:
+  - logging
+  - lokxy
+  - loki
+annotations:
+  "artifacthub.io/license": Apache-2.0
+  "artifacthub.io/links": |
+    - name: Chart Source
+      url: https://github.com/paulojmdias/lokxy

@@ -1,0 +1,144 @@
+deployment:
+  # -- Number of Lokxy pods to run
+  replicaCount: 2
+
+  # -- Deployment revision history limit
+  revisionHistoryLimit: 10
+
+  # -- Custom pod annotations
+  podAnnotations: {}
+
+  # -- Custom deployment annotations
+  annotations: {}
+
+  # -- Environment variables for the container
+  env: []
+
+  # -- Command to run in the container
+  command:
+    - /usr/local/bin/lokxy
+
+  # -- Additional CLI arguments passed to the main container
+  extraArgs: []
+
+  # -- Additional flags in key=value form (converted to --flag=value)
+  extraFlags: {}
+
+  # -- Kubernetes resource requests and limits
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 0.1
+    limits:
+      memory: 512Mi
+      cpu: 1
+
+  # -- Additional volumes to mount
+  extraVolumes: []
+
+  # -- Additional volume mounts for the container
+  extraVolumeMounts: []
+
+# -- Docker image configuration
+image:
+  repository: lokxy/lokxy
+  tag: v0.3.0
+  pullPolicy: IfNotPresent
+
+# -- Container ports used by Lokxy
+ports:
+  service: 3100
+  metrics: 3101
+
+# -- Raw lokxy.yaml config rendered into the ConfigMap
+config: |
+  server_groups:
+    - name: "Loki 1"
+      url: "http://localhost:3100"
+      timeout: 30
+  logging:
+    level: "info"
+    format: "json"
+
+# -- Kubernetes Service configuration for exposing the Lokxy application
+service:
+  # -- Whether to create a Kubernetes Service for Lokxy
+  enabled: true
+
+  # -- Kubernetes Service type (e.g., ClusterIP, NodePort, LoadBalancer)
+  type: ClusterIP
+
+  # -- Additional annotations to add to the Service metadata
+  annotations: {}
+
+# -- Horizontal Pod Autoscaler (HPA) configuration for automatically scaling Lokxy based on resource usage
+horizontalPodAutoscaler:
+  # -- Enable HorizontalPodAutoscaler for the Lokxy Deployment
+  enabled: false
+
+  # -- Minimum number of pods to scale down to
+  minReplicas: 2
+
+  # -- Maximum number of pods to scale up to
+  maxReplicas: 5
+
+  # -- Target average CPU utilization percentage across pods
+  targetCPUUtilizationPercentage: 75
+
+  # -- Target average memory utilization percentage across pods (optional)
+  targetMemoryUtilizationPercentage: null
+
+  # -- Advanced scaling behavior configuration for HPA (e.g., scaleUp policies)
+  # See: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior
+  behavior: {}
+
+# -- Vertical Pod Autoscaler (VPA) configuration for resource recommendation and automatic resizing
+verticalPodAutoscaler:
+  # -- Enable VerticalPodAutoscaler for the Lokxy Deployment
+  enabled: false
+
+  # -- VPA update policy: "Auto", "Initial", or "Off"
+  updatePolicy:
+    updateMode: "Auto"
+
+  # -- Fine-grained resource policy to exclude or limit certain containers (optional)
+  # See: https://cloud.google.com/kubernetes-engine/docs/concepts/verticalpodautoscaler#resource-policy
+  resourcePolicy: {}
+
+# -- PodDisruptionBudget configuration to ensure a minimum number of Lokxy pods are always available during voluntary disruptions
+podDisruptionBudget:
+  # -- Whether to create a PodDisruptionBudget for the Lokxy Deployment
+  enabled: true
+
+  # -- Minimum number of pods that must be available during a voluntary disruption
+  # Set either `minAvailable` or `maxUnavailable`, not both.
+  # Example: 1 (absolute value) or "50%" (percentage)
+  minAvailable: 1
+
+  # -- Maximum number of pods that can be unavailable during a voluntary disruption
+  # Set either `maxUnavailable` or `minAvailable`, not both.
+  # Example: 1 (absolute value) or "50%" (percentage)
+  maxUnavailable: null
+
+# -- Ingress configuration for exposing Lokxy externally over HTTP/S
+ingress:
+  # -- Whether to create an Ingress resource for Lokxy
+  enabled: false
+
+  # -- Annotations to add to the Ingress resource (e.g., cert-manager, NGINX settings)
+  annotations: {}
+
+  # -- Host rules for the Ingress resource
+  hosts:
+    - host: lokxy.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+
+  # -- TLS configuration for secure HTTPS access
+  # Example:
+  # tls:
+  #   - secretName: lokxy-tls
+  #     hosts:
+  #       - lokxy.example.com
+  tls: []
