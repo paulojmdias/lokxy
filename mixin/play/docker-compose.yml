@@ -28,6 +28,7 @@ services:
 
   loki1:
     image: grafana/loki:latest
+    container_name: loki1
     ports:
       - "3101:3101"
     command: -config.file=/etc/loki/local-config.yaml -server.http-listen-port=3101
@@ -38,6 +39,7 @@ services:
 
   promtail1:
     image: grafana/promtail:latest
+    container_name: promtail1
     volumes:
       - /var/log:/var/log
       - /tmp:/tmp
@@ -48,6 +50,7 @@ services:
 
   flog1:
     image: mingrammer/flog:latest
+    container_name: flog1
     volumes:
       - /tmp:/tmp
     command: -f json -d 500ms -l -o /tmp/flog1.log -t log -w
@@ -56,6 +59,7 @@ services:
 
   loki2:
     image: grafana/loki:latest
+    container_name: loki2
     ports:
       - "3102:3102"
     command: -config.file=/etc/loki/local-config.yaml -server.http-listen-port=3102
@@ -66,6 +70,7 @@ services:
 
   promtail2:
     image: grafana/promtail:latest
+    container_name: promtail2
     volumes:
       - /var/log:/var/log
       - /tmp:/tmp
@@ -76,6 +81,7 @@ services:
 
   flog2:
     image: mingrammer/flog:latest
+    container_name: flog2
     volumes:
       - /tmp:/tmp
     command: -f common_log -d 500ms -l -o /tmp/flog2.log -t log -w
@@ -83,7 +89,8 @@ services:
       - play
 
   lokxy:
-    image: lokxy/lokxy:0.1.2
+    image: lokxy/lokxy:latest
+    container_name: lokxy
     volumes:
       - "./lokxy:/config"
     ports:
@@ -100,9 +107,9 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector
-    command: ["--config=/etc/otel-collector-config.yaml"]
+    command: --config=/config/otel-collector-config.yaml
     volumes:
-      - ./otel-collector:/etc/
+      - ./otel-collector:/config
     ports:
       - "4317:4317"
       - "4318:4318"
