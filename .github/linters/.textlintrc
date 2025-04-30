@@ -1,7 +1,7 @@
 {
   "filters": {
     "allowlist": {
-      "files": ["!**/deployment/helm/README.md"]
+      "files": ["!deployment/helm/README.md"]
     }
   }
 }
