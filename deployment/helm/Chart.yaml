@@ -1,6 +1,5 @@
 apiVersion: v2
 name: lokxy
-# renovate: github=prometheus/prometheus
 appVersion: v0.3.0
 version: 0.0.1
 kubeVersion: ">=1.19.0-0"
