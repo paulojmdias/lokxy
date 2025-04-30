@@ -102,7 +102,7 @@ verticalPodAutoscaler:
     updateMode: "Auto"
 
   # -- Fine-grained resource policy to exclude or limit certain containers (optional)
-  # See: https://cloud.google.com/kubernetes-engine/docs/concepts/verticalpodautoscaler#resource-policy
+  # See: <https://cloud.google.com/kubernetes-engine/docs/concepts/verticalpodautoscaler#resource-policy>
   resourcePolicy: {}
 
 # -- PodDisruptionBudget configuration to ensure a minimum number of Lokxy pods are always available during voluntary disruptions
@@ -147,7 +147,7 @@ ingress:
 # More routes can be added by adding a dictionary key like the 'main' route.
 # Be aware that this is an early beta of this feature,
 # Being BETA this can/will change in the future without notice, do not use unless you want to take that risk
-# [[ref]](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io%2fv1alpha2)
+# [[ref]](<https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io%2fv1alpha2>)
 route:
   main:
     # -- Enables or disables the route
