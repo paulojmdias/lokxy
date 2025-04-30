@@ -30,6 +30,9 @@ jobs:
           VALIDATE_ENV: true
           VALIDATE_GITHUB_ACTIONS: true
           VALIDATE_GITLEAKS: true
+          VALIDATE_GO: true
+          VALIDATE_GO_MODULES: true
+          VALIDATE_GO_RELEASER: true
           VALIDATE_JSON: true
           VALIDATE_MARKDOWN: true
           VALIDATE_NATURAL_LANGUAGE: true
