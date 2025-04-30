@@ -2,16 +2,14 @@
 
 ![Version: 0.0.1](https://img.shields.io/badge/Version-0.0.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.3.0](https://img.shields.io/badge/AppVersion-v0.3.0-informational?style=flat-square)
 
-Lokxy is a lightweight log aggregator for Grafana Loki.
-It acts as a unified ingestion gateway, routing and transforming multiple log formats into a Loki-compatible stream.
-
-This chart bootstraps a Lokxy deployment on a Kubernetes cluster using the Helm package manager.
+Lokxy is a powerful log aggregator for Loki
 
 ## Maintainers
 
 | Name | Email | Url |
 | ---- | ------ | --- |
-| paulojmdias | <me@paulodias.xyz> | <https://github.com/paulojmdias> |
+| Paulo Dias | <me@paulodias.xyz> | <https://github.com/paulojmdias> |
+| Hélia Barroso |  | <https://github.com/heliapb> |
 
 ## Requirements
 
@@ -51,6 +49,10 @@ Kubernetes: `>=1.19.0-0`
 | podDisruptionBudget.maxUnavailable | string | `nil` | Maximum number of pods that can be unavailable during a voluntary disruption Set either `maxUnavailable` or `minAvailable`, not both. Example: 1 (absolute value) or "50%" (percentage) |
 | podDisruptionBudget.minAvailable | int | `1` | Minimum number of pods that must be available during a voluntary disruption Set either `minAvailable` or `maxUnavailable`, not both. Example: 1 (absolute value) or "50%" (percentage) |
 | ports | object | `{"metrics":3101,"service":3100}` | Container ports used by Lokxy |
+| route | object | `{"main":{"additionalRules":[],"annotations":{},"apiVersion":"gateway.networking.k8s.io/v1","enabled":false,"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"parentRefs":[]}}` | BETA: Configure the gateway routes for the chart here. More routes can be added by adding a dictionary key like the 'main' route. Be aware that this is an early beta of this feature, Being BETA this can/will change in the future without notice, do not use unless you want to take that risk [[ref]](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io%2fv1alpha2) |
+| route.main.apiVersion | string | `"gateway.networking.k8s.io/v1"` | Set the route apiVersion, e.g. gateway.networking.k8s.io/v1 or gateway.networking.k8s.io/v1alpha2 |
+| route.main.enabled | bool | `false` | Enables or disables the route |
+| route.main.kind | string | `"HTTPRoute"` | Set the route kind Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute |
 | service | object | `{"annotations":{},"enabled":true,"type":"ClusterIP"}` | Kubernetes Service configuration for exposing the Lokxy application |
 | service.annotations | object | `{}` | Additional annotations to add to the Service metadata |
 | service.enabled | bool | `true` | Whether to create a Kubernetes Service for Lokxy |

@@ -6,9 +6,11 @@ version: 0.0.1
 kubeVersion: ">=1.19.0-0"
 description: Lokxy is a powerful log aggregator for Loki
 maintainers:
-  - name: paulojmdias
+  - name: Paulo Dias
     email: me@paulodias.xyz
     url: https://github.com/paulojmdias
+  - name: Hélia Barroso
+    url: https://github.com/heliapb
 type: application
 keywords:
   - logging
