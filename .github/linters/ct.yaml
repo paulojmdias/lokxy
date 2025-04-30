@@ -1,6 +1,6 @@
 # See https://github.com/helm/chart-testing#configuration
 chart-dirs:
-  - deployment/helm
+  - deployment/helm/
 github-groups: true
 helm-extra-args: --timeout 600s
 remote: origin
