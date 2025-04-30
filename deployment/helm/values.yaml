@@ -89,7 +89,7 @@ horizontalPodAutoscaler:
   targetMemoryUtilizationPercentage: null
 
   # -- Advanced scaling behavior configuration for HPA (e.g., scaleUp policies)
-  # See: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior
+  # See: <https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior>
   behavior: {}
 
 # -- Vertical Pod Autoscaler (VPA) configuration for resource recommendation and automatic resizing

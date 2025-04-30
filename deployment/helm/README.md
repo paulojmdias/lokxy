@@ -32,7 +32,7 @@ Kubernetes: `>=1.19.0-0`
 | deployment.resources | object | `{"limits":{"cpu":1,"memory":"512Mi"},"requests":{"cpu":0.1,"memory":"128Mi"}}` | Kubernetes resource requests and limits |
 | deployment.revisionHistoryLimit | int | `10` | Deployment revision history limit |
 | horizontalPodAutoscaler | object | `{"behavior":{},"enabled":false,"maxReplicas":5,"minReplicas":2,"targetCPUUtilizationPercentage":75,"targetMemoryUtilizationPercentage":null}` | Horizontal Pod Autoscaler (HPA) configuration for automatically scaling Lokxy based on resource usage |
-| horizontalPodAutoscaler.behavior | object | `{}` | Advanced scaling behavior configuration for HPA (e.g., scaleUp policies) See: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior |
+| horizontalPodAutoscaler.behavior | object | `{}` | Advanced scaling behavior configuration for HPA (e.g., scaleUp policies) See: <https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior> |
 | horizontalPodAutoscaler.enabled | bool | `false` | Enable HorizontalPodAutoscaler for the Lokxy Deployment |
 | horizontalPodAutoscaler.maxReplicas | int | `5` | Maximum number of pods to scale up to |
 | horizontalPodAutoscaler.minReplicas | int | `2` | Minimum number of pods to scale down to |
