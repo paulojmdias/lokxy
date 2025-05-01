@@ -20,7 +20,7 @@ jobs:
       - name: Lint Code Base
         uses: super-linter/super-linter/slim@v7
         env:
-          FILTER_REGEX_EXCLUDE: 'deployment/helm/**/README\.md'
+          FILTER_REGEX_EXCLUDE: 'deployment/helm/.*/README\.md'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LINTER_RULES_PATH: .github/linters
           MULTI_STATUS: false
