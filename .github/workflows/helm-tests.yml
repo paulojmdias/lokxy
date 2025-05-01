@@ -1,4 +1,4 @@
-name: Helm Lint & Template Test
+name: Helm Tests
 
 on:
   pull_request:
@@ -12,6 +12,7 @@ on:
 
 jobs:
   helm-lint-test:
+    name: Helm Lint and Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
