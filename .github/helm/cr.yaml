@@ -1,4 +1,3 @@
 git-repo: lokxy
 owner: paulojmdias
 skip-existing: true
-release-name-template: "helm-{{ .Name }}-{{ .Version }}"
