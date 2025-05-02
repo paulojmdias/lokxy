@@ -4,8 +4,3 @@ horizontalPodAutoscaler:
   maxReplicas: 3
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 70
-
-verticalPodAutoscaler:
-  enabled: true
-  updatePolicy:
-    updateMode: "Auto"
