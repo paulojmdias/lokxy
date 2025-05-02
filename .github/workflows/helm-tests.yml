@@ -10,6 +10,9 @@ on:
     paths:
       - "deployment/helm/**"
 
+env:
+  CT_CONFIGFILE: .github/helm/ct.yaml
+
 jobs:
   helm-lint-test:
     name: Helm Lint and Test
@@ -30,16 +33,16 @@ jobs:
       - name: Run chart-testing (list-changed)
         id: list-changed
         run: |
-          changed=$(ct list-changed --config .github/helm/ct.yaml)
+          changed=$(ct list-changed --config ${CT_CONFIGFILE})
           if [[ -n "$changed" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
-        run: ct lint --config .github/helm/ct.yaml
+        run: ct lint --config ${CT_CONFIGFILE}
       - name: Create kind cluster
         if: steps.list-changed.outputs.changed == 'true'
         uses: helm/kind-action@v1
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
-        run: ct install --config .github/helm/ct.yaml
+        run: ct install --config ${CT_CONFIGFILE}
