@@ -1,0 +1,8 @@
+# See https://github.com/helm/chart-testing#configuration
+chart-dirs:
+  - deployment/helm/
+github-groups: true
+helm-extra-args: --timeout 600s
+remote: origin
+target-branch: main
+validate-maintainers: false
