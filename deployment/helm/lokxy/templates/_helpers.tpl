@@ -146,3 +146,19 @@ Return the appropriate apiVersion for HorizontalPodAutoscaler.
     {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
 {{- end -}}
+
+{{/*
+The volume to mount for lokxy configuration
+*/}}
+{{- define "lokxy.configVolume" -}}
+{{- if eq .Values.configStorageType "Secret" -}}
+secret:
+  secretName: {{ template "lokxy.fullname" . }}
+{{- else -}}
+configMap:
+  name: {{ template "lokxy.fullname" . }}
+  items:
+    - key: "config.yaml"
+      path: "config.yaml"
+{{- end -}}
+{{- end -}}

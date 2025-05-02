@@ -31,7 +31,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           args:
-             - --config=/etc/lokxy/lokxy.yaml
+             - --config=/etc/lokxy/config.yaml
              - --bind-addr=:{{ .Values.ports.service }}
              - --metrics-addr=:{{ .Values.ports.metrics }}
             {{- range .Values.deployment.extraFlags }}
@@ -51,8 +51,14 @@ spec:
             - name: metrics
               containerPort: {{ .Values.ports.metrics }}
               protocol: TCP
+          {{- with .Values.deployment.extraEnv }}
           env:
-            {{- toYaml .Values.deployment.env | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.deployment.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: lokxy-config
               mountPath: /etc/lokxy
@@ -63,8 +69,7 @@ spec:
             {{- toYaml .Values.deployment.resources | nindent 12 }}
       volumes:
         - name: lokxy-config
-          configMap:
-            name: {{ include "lokxy.fullname" . }}
+          {{- include "lokxy.configVolume" . | nindent 10 }}
       {{- with .Values.deployment.extraVolumes }}
       {{ toYaml . | nindent 8 }}
       {{- end }}

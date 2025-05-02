@@ -14,6 +14,16 @@ deployment:
   # -- Environment variables for the container
   env: []
 
+  # -- Common environment variables to add to all pods directly managed by this chart.
+  extraEnv: []
+
+  # -- Common source of environment injections to add to all pods directly managed by this chart.
+  # For example to inject values from a Secret, use:
+  # extraEnvFrom:
+  #   - secretRef:
+  #       name: mysecret
+  extraEnvFrom: []
+
   # -- Command to run in the container
   command:
     - /usr/local/bin/lokxy
@@ -50,7 +60,12 @@ ports:
   service: 3100
   metrics: 3101
 
-# -- Raw lokxy.yaml config rendered into the ConfigMap
+# -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
+# In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use environment variables in the configuration.
+# Such environment variables can be then stored in a separate Secret and injected via the deployment.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).
+configStorageType: ConfigMap
+
+# -- Raw lokxy.yaml config rendered into the ConfigMap or Secret (depending on configStorageType)
 config: |
   server_groups:
     - name: "Loki 1"

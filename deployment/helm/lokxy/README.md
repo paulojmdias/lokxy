@@ -19,11 +19,14 @@ Kubernetes: `>=1.19.0-0`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| config | string | `"server_groups:\n  - name: \"Loki 1\"\n    url: \"http://localhost:3100\"\n    timeout: 30\nlogging:\n  level: \"info\"\n  format: \"json\"\n"` | Raw lokxy.yaml config rendered into the ConfigMap |
+| config | string | `"server_groups:\n  - name: \"Loki 1\"\n    url: \"http://localhost:3100\"\n    timeout: 30\nlogging:\n  level: \"info\"\n  format: \"json\"\n"` | Raw lokxy.yaml config rendered into the ConfigMap or Secret (depending on configStorageType) |
+| configStorageType | string | `"ConfigMap"` | Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use environment variables in the configuration. Such environment variables can be then stored in a separate Secret and injected via the deployment.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables). |
 | deployment.annotations | object | `{}` | Custom deployment annotations |
 | deployment.command | list | `["/usr/local/bin/lokxy"]` | Command to run in the container |
 | deployment.env | list | `[]` | Environment variables for the container |
 | deployment.extraArgs | list | `[]` | Additional CLI arguments passed to the main container |
+| deployment.extraEnv | list | `[]` | Common environment variables to add to all pods directly managed by this chart. |
+| deployment.extraEnvFrom | list | `[]` | Common source of environment injections to add to all pods directly managed by this chart. For example to inject values from a Secret, use: extraEnvFrom:   - secretRef:       name: mysecret |
 | deployment.extraFlags | object | `{}` |  |
 | deployment.extraVolumeMounts | list | `[]` | Additional volume mounts for the container |
 | deployment.extraVolumes | list | `[]` | Additional volumes to mount |
