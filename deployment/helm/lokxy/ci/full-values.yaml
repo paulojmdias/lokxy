@@ -6,9 +6,6 @@ horizontalPodAutoscaler:
   minReplicas: 1
   maxReplicas: 4
 
-verticalPodAutoscaler:
-  enabled: true
-
 ingress:
   enabled: true
   hosts:
