@@ -65,7 +65,7 @@ deployment:
 # -- Docker image configuration
 image:
   repository: lokxy/lokxy
-  tag: v0.3.0
+  tag: v0.4.0
   pullPolicy: IfNotPresent
 
 # -- Container ports used by Lokxy
