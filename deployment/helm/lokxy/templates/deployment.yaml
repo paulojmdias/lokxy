@@ -65,6 +65,21 @@ spec:
           {{- with .Values.deployment.extraVolumeMounts }}
           {{ toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.deployment.livenessProbe }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.deployment.livenessProbe.httpGet.path }}
+              port: {{ .Values.ports.service }}
+            initialDelaySeconds: {{ .Values.deployment.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.deployment.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.deployment.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.deployment.readinessProbe }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.deployment.readinessProbe.httpGet.path }}
+              port: {{ .Values.ports.service }}
+          {{- end }}
           resources:
             {{- toYaml .Values.deployment.resources | nindent 12 }}
       volumes:

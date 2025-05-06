@@ -95,8 +95,6 @@ Return the appropriate apiVersion for rbac.
 {{- define "lokxy.rbac.apiVersion" -}}
 {{- if .Capabilities.APIVersions.Has "rbac.authorization.k8s.io/v1" }}
 {{- print "rbac.authorization.k8s.io/v1" -}}
-{{- else -}}
-{{- print "rbac.authorization.k8s.io/v1beta1" -}}
 {{- end -}}
 {{- end -}}
 
@@ -104,12 +102,8 @@ Return the appropriate apiVersion for rbac.
 Return the appropriate apiVersion for ingress.
 */}}
 {{- define "lokxy.ingress.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.19.x" (include "lokxy.kubeVersion" .)) -}}
+  {{- if and (.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.23.x" (include "lokxy.kubeVersion" .)) -}}
       {{- print "networking.k8s.io/v1" -}}
-  {{- else if .Capabilities.APIVersions.Has "networking.k8s.io/v1beta1" -}}
-    {{- print "networking.k8s.io/v1beta1" -}}
-  {{- else -}}
-    {{- print "extensions/v1beta1" -}}
   {{- end -}}
 {{- end -}}
 
@@ -121,29 +115,11 @@ Return if ingress is stable.
 {{- end -}}
 
 {{/*
-Return if ingress supports ingressClassName.
-*/}}
-{{- define "lokxy.ingress.supportsIngressClassName" -}}
-  {{- or (eq (include "lokxy.ingress.isStable" .) "true") (and (eq (include "lokxy.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18.x" (include "lokxy.kubeVersion" .))) -}}
-{{- end -}}
-
-{{/*
-Return if ingress supports pathType.
-*/}}
-{{- define "lokxy.ingress.supportsPathType" -}}
-  {{- or (eq (include "lokxy.ingress.isStable" .) "true") (and (eq (include "lokxy.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18.x" (include "lokxy.kubeVersion" .))) -}}
-{{- end -}}
-
-{{/*
 Return the appropriate apiVersion for HorizontalPodAutoscaler.
 */}}
 {{- define "lokxy.horizontalPodAutoscaler.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.19-0" (include "lokxy.kubeVersion" .)) -}}
+  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.23.x" (include "lokxy.kubeVersion" .)) -}}
       {{- print "autoscaling/v2" -}}
-  {{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" -}}
-    {{- print "autoscaling/v2beta2" -}}
-  {{- else -}}
-    {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
 {{- end -}}
 

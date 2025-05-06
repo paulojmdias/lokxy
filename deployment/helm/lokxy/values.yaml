@@ -49,6 +49,19 @@ deployment:
   # -- Additional volume mounts for the container
   extraVolumeMounts: []
 
+  # -- readiness probe settings
+  readinessProbe:
+    httpGet:
+      path: /ready
+
+  # -- liveness probe settings
+  livenessProbe:
+    httpGet:
+      path: /healthy
+    initialDelaySeconds: 60
+    timeoutSeconds: 30
+    failureThreshold: 10
+
 # -- Docker image configuration
 image:
   repository: lokxy/lokxy
@@ -142,6 +155,9 @@ ingress:
 
   # -- Annotations to add to the Ingress resource (e.g., cert-manager, NGINX settings)
   annotations: {}
+
+  # -- Ingress class name (e.g., nginx, traefik)
+  className: ""
 
   # -- Host rules for the Ingress resource
   hosts:
