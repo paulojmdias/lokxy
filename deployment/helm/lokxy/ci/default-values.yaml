@@ -1,0 +1,10 @@
+deployment:
+  replicaCount: 1
+
+config: |
+  logging:
+    level: debug
+  server_groups:
+    - name: loki
+      url: http://localhost:3100
+      timeout: 5

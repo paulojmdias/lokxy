@@ -1,0 +1,30 @@
+deployment:
+  replicaCount: 2
+
+horizontalPodAutoscaler:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 4
+
+ingress:
+  enabled: true
+  hosts:
+    - host: lokxy.full.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+config: |
+  server_groups:
+    - name: "Loki 1"
+      url: "http://loki1:3100"
+      timeout: 30
+    - name: "Loki 2"
+      url: "http://loki2:3100"
+      timeout: 30
+    - name: "Loki 3"
+      url: "http://loki3:3100"
+      timeout: 30
+  logging:
+    level: "info"
+    format: "json"

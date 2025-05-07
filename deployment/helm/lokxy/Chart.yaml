@@ -1,0 +1,22 @@
+apiVersion: v2
+name: lokxy
+appVersion: v0.4.0
+version: 0.0.1
+kubeVersion: ">=1.23.0-0"
+description: Lokxy is a powerful log aggregator for Loki
+maintainers:
+  - name: Paulo Dias
+    email: me@paulodias.xyz
+    url: https://github.com/paulojmdias
+  - name: Hélia Barroso
+    url: https://github.com/heliapb
+type: application
+keywords:
+  - logging
+  - lokxy
+  - loki
+annotations:
+  "artifacthub.io/license": GPL-3.0-or-later
+  "artifacthub.io/links": |
+    - name: Chart Source
+      url: https://github.com/paulojmdias/lokxy
