@@ -2,10 +2,13 @@ package config
 
 import (
 	"os"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/yaml.v2"
 )
+
+var isReady atomic.Bool
 
 // HTTPClientConfig holds the HTTP client settings such as timeouts and TLS configurations
 type HTTPClientConfig struct {
@@ -53,4 +56,12 @@ func LoadConfig(configFile string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func SetReady(ready bool) {
+	isReady.Store(ready)
+}
+
+func IsReady() bool {
+	return isReady.Load()
 }
