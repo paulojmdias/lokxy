@@ -86,6 +86,26 @@ server_groups:
 			t.Logf("failed to write health response: %v", err)
 		}
 	})
+	http.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("Alive")); err != nil {
+			t.Logf("failed to write healthy response: %v", err)
+		}
+	})
+
+	http.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
+		if config.IsReady() {
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write([]byte("OK")); err != nil {
+				t.Logf("failed to write readiness response: %v", err)
+			}
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if _, err := w.Write([]byte("Not Ready")); err != nil {
+				t.Logf("failed to write readiness response: %v", err)
+			}
+		}
+	})
 
 	// Register the proxy handler
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -142,6 +162,44 @@ server_groups:
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Handler returned wrong status code: got %v want %v", resp.StatusCode, http.StatusOK)
+		}
+	})
+
+	t.Run("test healthy endpoint", func(t *testing.T) {
+		resp, err := http.Get("http://localhost:3100/healthy")
+		if err != nil {
+			t.Fatalf("Failed to get healthy: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Handler returned wrong status code: got %v want %v", resp.StatusCode, http.StatusOK)
+		}
+	})
+
+	t.Run("test readiness before ready", func(t *testing.T) {
+		config.SetReady(false)
+		resp, err := http.Get("http://localhost:3100/ready")
+		if err != nil {
+			t.Fatalf("Failed to get readiness: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			t.Errorf("Expected not ready status, got: %v", resp.StatusCode)
+		}
+	})
+
+	t.Run("test readiness after ready", func(t *testing.T) {
+		config.SetReady(true)
+		resp, err := http.Get("http://localhost:3100/ready")
+		if err != nil {
+			t.Fatalf("Failed to get readiness: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected ready status, got: %v", resp.StatusCode)
 		}
 	})
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/paulojmdias/lokxy/pkg/config"
@@ -73,10 +74,41 @@ func main() {
 		}
 	})
 
+	//Liveness probe endpoint
+	http.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("OK")); err != nil {
+			level.Error(logger).Log("msg", "Failed to write response in /healthy handler", "err", err)
+		}
+	})
+
+	// Readiness probe endpoint
+	http.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
+		if config.IsReady() {
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write([]byte("OK")); err != nil {
+				level.Error(logger).Log("msg", "Failed to write response in /ready handler", "err", err)
+			}
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if _, err := w.Write([]byte("Not Ready")); err != nil {
+				level.Error(logger).Log("msg", "Failed to write response in /ready handler", "err", err)
+			}
+		}
+	})
+
 	// Register the proxy handler for all other requests
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		proxy.ProxyHandler(w, r, cfg, logger)
 	})
+
+	go func() {
+		time.Sleep(5 * time.Second)
+
+		// Set the application as ready
+		config.SetReady(true)
+		level.Info(logger).Log("msg", "Application is now ready to serve traffic")
+	}()
 
 	// Start the HTTP server
 	level.Info(logger).Log("msg", "Listening", "addr", *bindAddr)
