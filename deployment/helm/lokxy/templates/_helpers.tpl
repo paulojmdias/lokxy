@@ -65,13 +65,6 @@ Get KubeVersion removing pre-release information.
 {{- end -}}
 
 {{/*
-Return the appropriate apiVersion for deployment.
-*/}}
-{{- define "lokxy.deployment.apiVersion" -}}
-{{- print "apps/v1" -}}
-{{- end -}}
-
-{{/*
 Return the appropriate apiVersion for networkpolicy.
 */}}
 {{- define "lokxy.networkPolicy.apiVersion" -}}
