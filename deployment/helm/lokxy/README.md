@@ -1,6 +1,6 @@
 # lokxy
 
-![Version: 0.0.1](https://img.shields.io/badge/Version-0.0.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.3.0](https://img.shields.io/badge/AppVersion-v0.3.0-informational?style=flat-square)
+![Version: 0.0.1](https://img.shields.io/badge/Version-0.0.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.4.0](https://img.shields.io/badge/AppVersion-v0.4.0-informational?style=flat-square)
 
 Lokxy is a powerful log aggregator for Loki
 
@@ -13,7 +13,7 @@ Lokxy is a powerful log aggregator for Loki
 
 ## Requirements
 
-Kubernetes: `>=1.19.0-0`
+Kubernetes: `>=1.23.0-0`
 
 ## Values
 
@@ -30,7 +30,9 @@ Kubernetes: `>=1.19.0-0`
 | deployment.extraFlags | object | `{}` |  |
 | deployment.extraVolumeMounts | list | `[]` | Additional volume mounts for the container |
 | deployment.extraVolumes | list | `[]` | Additional volumes to mount |
+| deployment.livenessProbe | object | `{"failureThreshold":10,"httpGet":{"path":"/healthy"},"initialDelaySeconds":60,"timeoutSeconds":30}` | liveness probe settings |
 | deployment.podAnnotations | object | `{}` | Custom pod annotations |
+| deployment.readinessProbe | object | `{"httpGet":{"path":"/ready"}}` | readiness probe settings |
 | deployment.replicaCount | int | `2` | Number of Lokxy pods to run |
 | deployment.resources | object | `{"limits":{"cpu":1,"memory":"512Mi"},"requests":{"cpu":0.1,"memory":"128Mi"}}` | Kubernetes resource requests and limits |
 | deployment.revisionHistoryLimit | int | `10` | Deployment revision history limit |
@@ -41,9 +43,10 @@ Kubernetes: `>=1.19.0-0`
 | horizontalPodAutoscaler.minReplicas | int | `2` | Minimum number of pods to scale down to |
 | horizontalPodAutoscaler.targetCPUUtilizationPercentage | int | `75` | Target average CPU utilization percentage across pods |
 | horizontalPodAutoscaler.targetMemoryUtilizationPercentage | string | `nil` | Target average memory utilization percentage across pods (optional) |
-| image | object | `{"pullPolicy":"IfNotPresent","repository":"lokxy/lokxy","tag":"v0.3.0"}` | Docker image configuration |
-| ingress | object | `{"annotations":{},"enabled":false,"hosts":[{"host":"lokxy.local","paths":[{"path":"/","pathType":"ImplementationSpecific"}]}],"tls":[]}` | Ingress configuration for exposing Lokxy externally over HTTP/S |
+| image | object | `{"pullPolicy":"IfNotPresent","repository":"lokxy/lokxy","tag":"v0.4.0"}` | Docker image configuration |
+| ingress | object | `{"annotations":{},"className":"","enabled":false,"hosts":[{"host":"lokxy.local","paths":[{"path":"/","pathType":"ImplementationSpecific"}]}],"tls":[]}` | Ingress configuration for exposing Lokxy externally over HTTP/S |
 | ingress.annotations | object | `{}` | Annotations to add to the Ingress resource (e.g., cert-manager, NGINX settings) |
+| ingress.className | string | `""` | Ingress class name (e.g., nginx, traefik) |
 | ingress.enabled | bool | `false` | Whether to create an Ingress resource for Lokxy |
 | ingress.hosts | list | `[{"host":"lokxy.local","paths":[{"path":"/","pathType":"ImplementationSpecific"}]}]` | Host rules for the Ingress resource |
 | ingress.tls | list | `[]` | TLS configuration for secure HTTPS access Example: tls:   - secretName: lokxy-tls     hosts:       - lokxy.example.com |
