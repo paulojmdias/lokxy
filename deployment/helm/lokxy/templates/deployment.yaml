@@ -7,7 +7,12 @@ metadata:
     {{- include "lokxy.common.matchLabels" . | nindent 4 }}
     {{- include "lokxy.common.metaLabels" . | nindent 4 }}
   annotations:
-    {{- toYaml .Values.deployment.annotations | nindent 4 }}
+    {{- with .Values.global.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.deployment.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   replicas: {{ .Values.deployment.replicaCount }}
   revisionHistoryLimit: {{ .Values.deployment.revisionHistoryLimit }}
@@ -20,7 +25,12 @@ spec:
         {{- include "lokxy.common.matchLabels" . | nindent 8 }}
         {{- include "lokxy.common.metaLabels" . | nindent 8 }}
       annotations:
-        {{- toYaml .Values.deployment.podAnnotations | nindent 8 }}
+        {{- with .Values.global.annotations }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.deployment.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       containers:
         - name: lokxy

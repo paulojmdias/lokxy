@@ -1,3 +1,10 @@
+global:
+  # -- Common labels and annotations for all resources
+  annotations: {}
+
+  # -- Common labels for all resources
+  labels: {}
+
 deployment:
   # -- Number of Lokxy pods to run
   replicaCount: 2
@@ -120,6 +127,12 @@ horizontalPodAutoscaler:
   # See: <https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior>
   behavior: {}
 
+  # -- Custom HorizontalPodAutoscaler annotations
+  annotations: {}
+
+  # -- Custom HorizontalPodAutoscaler labels
+  labels: {}
+
 # -- Vertical Pod Autoscaler (VPA) configuration for resource recommendation and automatic resizing
 verticalPodAutoscaler:
   # -- Enable VerticalPodAutoscaler for the Lokxy Deployment
@@ -132,6 +145,12 @@ verticalPodAutoscaler:
   # -- Fine-grained resource policy to exclude or limit certain containers (optional)
   # See: <https://cloud.google.com/kubernetes-engine/docs/concepts/verticalpodautoscaler#resource-policy>
   resourcePolicy: {}
+
+  # -- Custom VerticalPodAutoscaler annotations
+  annotations: {}
+
+  # -- Custom VerticalPodAutoscaler labels
+  labels: {}
 
 # -- PodDisruptionBudget configuration to ensure a minimum number of Lokxy pods are always available during voluntary disruptions
 podDisruptionBudget:
@@ -148,6 +167,12 @@ podDisruptionBudget:
   # Example: 1 (absolute value) or "50%" (percentage)
   maxUnavailable: null
 
+  # -- Custom podDisruptionBudget annotations
+  annotations: {}
+
+  # -- Custom podDisruptionBudget labels
+  labels: {}
+
 # -- Ingress configuration for exposing Lokxy externally over HTTP/S
 ingress:
   # -- Whether to create an Ingress resource for Lokxy
@@ -155,6 +180,9 @@ ingress:
 
   # -- Annotations to add to the Ingress resource (e.g., cert-manager, NGINX settings)
   annotations: {}
+
+  # -- Custom Ingress labels
+  labels: {}
 
   # -- Ingress class name (e.g., nginx, traefik)
   className: ""
@@ -186,11 +214,15 @@ route:
 
     # -- Set the route apiVersion, e.g. gateway.networking.k8s.io/v1 or gateway.networking.k8s.io/v1alpha2
     apiVersion: gateway.networking.k8s.io/v1
+
     # -- Set the route kind
     # Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute
     kind: HTTPRoute
 
+    # -- Annotations to add to the route resource (e.g., cert-manager, NGINX settings)
     annotations: {}
+
+    # -- Custom Route labels
     labels: {}
 
     hostnames: []

@@ -7,7 +7,12 @@ metadata:
     {{- include "lokxy.common.matchLabels" . | nindent 4 }}
     {{- include "lokxy.common.metaLabels" . | nindent 4 }}
   annotations:
-    {{- toYaml .Values.service.annotations | nindent 4 }}
+    {{- with .Values.global.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.service.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   type: {{ .Values.service.type }}
   selector:

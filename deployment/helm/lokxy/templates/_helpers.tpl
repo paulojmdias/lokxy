@@ -35,7 +35,7 @@ Create unified labels for lokxy components
 app.kubernetes.io/version: {{ .Chart.AppVersion }}
 helm.sh/chart: {{ include "lokxy.chart" . }}
 app.kubernetes.io/part-of: {{ include "lokxy.name" . }}
-{{- with .Values.commonMetaLabels }}
+{{- with .Values.global.labels }}
 {{ toYaml . }}
 {{- end }}
 {{- end -}}

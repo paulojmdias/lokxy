@@ -10,6 +10,10 @@ metadata:
   labels:
     {{- include "lokxy.common.matchLabels" . | nindent 4 }}
     {{- include "lokxy.common.metaLabels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.global.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
 {{- if eq .Values.configStorageType "Secret" }}
 data:
   config.yaml: {{- tpl .Values.config . | b64enc | nindent 4 }}

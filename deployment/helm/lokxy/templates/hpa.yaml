@@ -9,7 +9,12 @@ metadata:
     {{- include "lokxy.common.matchLabels" . | nindent 4 }}
     {{- include "lokxy.common.metaLabels" . | nindent 4 }}
   annotations:
-    {{- toYaml .Values.horizontalPodAutoscaler.annotations | nindent 4 }}
+    {{- with .Values.global.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.horizontalPodAutoscaler.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1

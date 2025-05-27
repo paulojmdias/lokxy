@@ -8,7 +8,12 @@ metadata:
     {{- include "lokxy.common.matchLabels" . | nindent 4 }}
     {{- include "lokxy.common.metaLabels" . | nindent 4 }}
   annotations:
-    {{- toYaml .Values.verticalPodAutoscaler.annotations | nindent 4 }}
+    {{- with .Values.global.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.verticalPodAutoscaler.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   targetRef:
     apiVersion: apps/v1
