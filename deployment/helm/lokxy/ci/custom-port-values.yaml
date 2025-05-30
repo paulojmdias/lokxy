@@ -1,0 +1,3 @@
+ports:
+  service: 9999
+  metrics: 9998
