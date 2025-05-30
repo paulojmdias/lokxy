@@ -65,13 +65,6 @@ Get KubeVersion removing pre-release information.
 {{- end -}}
 
 {{/*
-Return the appropriate apiVersion for networkpolicy.
-*/}}
-{{- define "lokxy.networkPolicy.apiVersion" -}}
-{{- print "networking.k8s.io/v1" -}}
-{{- end -}}
-
-{{/*
 Return the appropriate apiVersion for poddisruptionbudget.
 */}}
 {{- define "lokxy.podDisruptionBudget.apiVersion" -}}
