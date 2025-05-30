@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "lokxy.fullname" . }}
+  namespace: {{ include "lokxy.namespace" . }}
+  labels:
+    {{- include "lokxy.common.matchLabels" . | nindent 4 }}
+    {{- include "lokxy.common.metaLabels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.global.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.deployment.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.deployment.replicaCount }}
+  revisionHistoryLimit: {{ .Values.deployment.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "lokxy.common.matchLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "lokxy.common.matchLabels" . | nindent 8 }}
+        {{- include "lokxy.common.metaLabels" . | nindent 8 }}
+      annotations:
+        {{- with .Values.global.annotations }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.deployment.podAnnotations }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      containers:
+        - name: lokxy
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.deployment.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          args:
+             - --config=/etc/lokxy/config.yaml
+             - --bind-addr=:{{ .Values.ports.service }}
+             - --metrics-addr=:{{ .Values.ports.metrics }}
+            {{- range .Values.deployment.extraFlags }}
+            - --{{ . }}
+            {{- end }}
+            {{- range $key, $value := .Values.deployment.extraArgs }}
+              {{- if $value }}
+              - --{{ $key }}={{ $value }}
+              {{- else }}
+              - --{{ $key }}
+              {{- end }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.service }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.ports.metrics }}
+              protocol: TCP
+          {{- with .Values.deployment.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.deployment.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: lokxy-config
+              mountPath: /etc/lokxy
+          {{- with .Values.deployment.extraVolumeMounts }}
+          {{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.deployment.livenessProbe }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.deployment.livenessProbe.httpGet.path }}
+              port: {{ .Values.ports.service }}
+            initialDelaySeconds: {{ .Values.deployment.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.deployment.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.deployment.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.deployment.readinessProbe }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.deployment.readinessProbe.httpGet.path }}
+              port: {{ .Values.ports.service }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.deployment.resources | nindent 12 }}
+      volumes:
+        - name: lokxy-config
+          {{- include "lokxy.configVolume" . | nindent 10 }}
+      {{- with .Values.deployment.extraVolumes }}
+      {{ toYaml . | nindent 8 }}
+      {{- end }}

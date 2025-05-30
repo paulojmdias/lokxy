@@ -1,9 +1,16 @@
 BUILD := build
+CONTAINER_ENGINE := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 GO ?= go
 GOFILES := $(shell find . -name "*.go" -type f ! -path "./vendor/*")
 GOLANGCI_LINT ?= golangci-lint
 VERSION := $(shell git describe --tags --abbrev=0)
 REVISION := $(shell git rev-parse --short HEAD)
+
+.PHONY: info
+info:
+	@echo "Using container engine: $(CONTAINER_ENGINE)"
+	@echo "Using Go: $(GO)"
+	@echo "Using GolangCI-Lint: $(GOLANGCI_LINT)"
 
 .PHONY: clean
 clean:
@@ -33,12 +40,12 @@ build:
 		-x -o lokxy ./cmd/
 
 testlocal-build:
-	docker build -f Dockerfile.local --load -t lokxy:latest .
+	$(CONTAINER_ENGINE) build -f Dockerfile.local --load -t lokxy:latest .
 
 .PHONY: tag
 tag:
 	@if [ -z "$(TAG)" ]; then \
-		echo "TAG is required. Usage: make release TAG=v0.4.0"; \
+		echo "TAG is required. Usage: TAG=v0.4.0 make release"; \
 		exit 1; \
 	fi
 
@@ -58,3 +65,11 @@ tag:
 	@git commit --allow-empty -m "chore: release $(TAG)"
 	@git tag -a $(TAG) -m "chore(release): $(TAG)"
 	@git push origin $(TAG)
+	$(CONTAINER_ENGINE) build -f Dockerfile.local --load -t lokxy:latest .
+
+.PHONY: helm-docs
+helm-docs:
+	$(CONTAINER_ENGINE) run --rm \
+		-v "$(PWD):/helm-docs" \
+		-u $(shell id -u):$(shell id -g) \
+		jnorwood/helm-docs:v1.11.0
