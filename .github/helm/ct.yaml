@@ -5,5 +5,4 @@ github-groups: true
 helm-extra-args: --timeout 600s
 remote: origin
 target-branch: main
-use-helmignore: true
 validate-maintainers: false
