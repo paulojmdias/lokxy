@@ -1,0 +1,7 @@
+ingress:
+  enabled: true
+  hosts:
+    - host: lokxy.test.local
+      paths:
+        - path: /
+          pathType: Prefix

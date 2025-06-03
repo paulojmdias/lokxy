@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "lokxy.fullname" . }}
+  namespace: {{ include "lokxy.namespace" . }}
+  labels:
+    {{- include "lokxy.common.matchLabels" . | nindent 4 }}
+    {{- include "lokxy.common.metaLabels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.global.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.service.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "lokxy.common.matchLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ports.service }}
+      targetPort: http
+    - name: metrics
+      port: {{ .Values.ports.metrics }}
+      targetPort: metrics
