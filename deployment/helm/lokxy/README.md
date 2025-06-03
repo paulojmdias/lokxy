@@ -1,5 +1,22 @@
 # lokxy
 
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/lokxy)](https://artifacthub.io/packages/search?repo=lokxy)
+
+## Usage
+
+[Helm](https://helm.sh) must be installed to use the charts.
+Please refer to Helm's [documentation](https://helm.sh/docs/) to get started.
+
+Once Helm is set up properly, add the repo as follows:
+
+```console
+helm repo add lokxy https://helm.lokxy.paulodias.xyz
+```
+
+You can then run `helm search repo lokxy` to see the charts.
+
+## Version
+
 ![Version: 0.0.1](https://img.shields.io/badge/Version-0.0.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.4.0](https://img.shields.io/badge/AppVersion-v0.4.0-informational?style=flat-square)
 
 Lokxy is a powerful log aggregator for Loki
