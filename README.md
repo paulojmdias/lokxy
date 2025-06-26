@@ -175,3 +175,7 @@ curl "http://localhost:3100/loki/api/v1/query?query={job=\"myapp\"}"
 ```
 
 Logs from all configured Loki instances will be aggregated and returned.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=paulojmdias/lokxy&type=Date)](https://www.star-history.com/#paulojmdias/lokxy&Date)
