@@ -7,7 +7,7 @@ toolchain go1.24.2
 require (
 	github.com/go-kit/log v0.2.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/loki/v3 v3.5.1
+	github.com/grafana/loki/v3 v3.5.2
 	github.com/prometheus/client_golang v1.22.0
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.59.0
