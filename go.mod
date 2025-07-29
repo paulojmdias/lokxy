@@ -10,7 +10,7 @@ require (
 	github.com/grafana/loki/v3 v3.5.2
 	github.com/prometheus/client_golang v1.22.0
 	go.opentelemetry.io/otel v1.37.0
-	go.opentelemetry.io/otel/exporters/prometheus v0.59.0
+	go.opentelemetry.io/otel/exporters/prometheus v0.59.1
 	go.opentelemetry.io/otel/metric v1.37.0
 	go.opentelemetry.io/otel/sdk v1.37.0
 	go.opentelemetry.io/otel/sdk/metric v1.37.0
@@ -137,7 +137,8 @@ require (
 	github.com/prometheus/common v0.65.0 // indirect
 	github.com/prometheus/common/sigv4 v0.1.0 // indirect
 	github.com/prometheus/exporter-toolkit v0.13.2 // indirect
-	github.com/prometheus/procfs v0.16.1 // indirect
+	github.com/prometheus/otlptranslator v0.0.0-20250717125610-8549f4ab4f8f // indirect
+	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/prometheus/prometheus v0.302.1 // indirect
 	github.com/redis/go-redis/v9 v9.7.3 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
@@ -176,8 +177,8 @@ require (
 	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.14.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sync v0.15.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.29.0 // indirect
