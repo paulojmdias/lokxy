@@ -1,4 +1,4 @@
-FROM debian:12-slim AS builder
+FROM debian:13-slim AS builder
 
 ARG BUILDPLATFORM
 ARG TARGETARCH
