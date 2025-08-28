@@ -6,6 +6,13 @@ receivers:
           scrape_interval: 15s
           static_configs:
             - targets: ['lokxy:9091']
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 exporters:
   debug:
     verbosity: detailed
@@ -14,4 +21,7 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus]
+      exporters: [debug]
+    traces:
+      receivers: [otlp]
       exporters: [debug]
