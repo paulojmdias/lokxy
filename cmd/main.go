@@ -129,7 +129,7 @@ func main() {
 
 	// Start the HTTP server
 	level.Info(logger).Log("msg", "Listening", "addr", *bindAddr)
-	if err := http.ListenAndServe(*bindAddr, nil); err != nil {
+	if err := http.ListenAndServe(*bindAddr, traces.HTTPTracesHandler(logger)(http.DefaultServeMux)); err != nil {
 		level.Info(logger).Log("msg", "Serving lokxy failed", "err", err)
 	}
 }
