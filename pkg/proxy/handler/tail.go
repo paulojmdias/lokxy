@@ -90,10 +90,10 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 			ctx := context.Background()
 			// Build the WebSocket target URL
 			targetURL := instance.URL
-			if strings.HasPrefix(targetURL, "http://") {
-				targetURL = "ws://" + strings.TrimPrefix(targetURL, "http://")
-			} else if strings.HasPrefix(targetURL, "https://") {
-				targetURL = "wss://" + strings.TrimPrefix(targetURL, "https://")
+			if after, ok := strings.CutPrefix(targetURL, "http://"); ok {
+				targetURL = "ws://" + after
+			} else if after, ok := strings.CutPrefix(targetURL, "https://"); ok {
+				targetURL = "wss://" + after
 			}
 
 			targetURL += r.URL.Path
