@@ -331,7 +331,7 @@ func TestResponseWriter(t *testing.T) {
 	data := []byte("test response")
 	n, err := rw.Write(data)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, len(data), n)
 	assert.Equal(t, string(data), rr.Body.String())
 }
