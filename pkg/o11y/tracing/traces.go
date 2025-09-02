@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-kit/log"
@@ -24,7 +23,6 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 	// https://pkg.go.dev/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 	exporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
 	)
 	if err != nil {
 		return nil, err
@@ -42,10 +40,8 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 	otel.SetTracerProvider(tracerProvider)
 
 	// add context propagation
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	))
+	prop := newPropagator()
+	otel.SetTextMapPropagator(prop)
 
 	return tracerProvider, nil
 }
@@ -59,6 +55,13 @@ func ExtractTraceFromHTTPRequest(r *http.Request) context.Context {
 	propagator := otel.GetTextMapPropagator()
 	ctx := r.Context()
 	return propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
+}
+
+func newPropagator() propagation.TextMapPropagator {
+	return propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	)
 }
 
 func InjectTraceToHTTPRequest(ctx context.Context, r *http.Request) {
@@ -96,6 +99,8 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 
 			if wrappedWriter.statusCode >= 400 {
 				span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", wrappedWriter.statusCode))
+			} else {
+				span.SetStatus(codes.Ok, "Request completed successfully")
 			}
 
 			level.Info(logger).Log(

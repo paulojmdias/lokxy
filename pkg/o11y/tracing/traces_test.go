@@ -269,7 +269,7 @@ func TestHTTPTracesHandler(t *testing.T) {
 
 	span := spans[0]
 	assert.Equal(t, "GET /api/test", span.Name)
-	assert.Equal(t, codes.Unset, span.Status.Code)
+	assert.Equal(t, codes.Ok, span.Status.Code)
 
 	attrs := span.Attributes
 	attrMap := make(map[string]any)
