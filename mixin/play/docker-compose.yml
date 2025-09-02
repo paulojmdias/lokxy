@@ -89,7 +89,7 @@ services:
       - play
 
   lokxy:
-    image: lokxy/local:latest
+    image: lokxy/lokxy:latest
     container_name: lokxy
     volumes:
       - "./lokxy:/config"
