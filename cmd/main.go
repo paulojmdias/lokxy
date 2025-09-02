@@ -12,6 +12,7 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/logging"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
+	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -66,6 +67,17 @@ func main() {
 		}
 	}()
 
+	// initialize tracer provider
+	tracerProvider, err := traces.InitTracer(ctx)
+	if err != nil {
+		log.Fatalf("Failed to initialize tracer: %v", err)
+	}
+	defer func() {
+		if err := tracerProvider.Shutdown(ctx); err != nil {
+			log.Fatalf("Failed to shutdown tracer provider: %v", err)
+		}
+	}()
+
 	// Register health check endpoint
 	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -99,6 +111,12 @@ func main() {
 
 	// Register the proxy handler for all other requests
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		ctx := traces.ExtractTraceFromHTTPRequest(r)
+
+		// Add span for this request
+		_, span := traces.CreateSpan(ctx, "proxy_request")
+		defer span.End()
+
 		proxy.ProxyHandler(w, r, cfg, logger)
 	})
 
@@ -112,7 +130,7 @@ func main() {
 
 	// Start the HTTP server
 	level.Info(logger).Log("msg", "Listening", "addr", *bindAddr)
-	if err := http.ListenAndServe(*bindAddr, nil); err != nil {
+	if err := http.ListenAndServe(*bindAddr, traces.HTTPTracesHandler(logger)(http.DefaultServeMux)); err != nil {
 		level.Info(logger).Log("msg", "Serving lokxy failed", "err", err)
 	}
 }
