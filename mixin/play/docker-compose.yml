@@ -89,7 +89,7 @@ services:
       - play
 
   lokxy:
-    image: lokxy/lokxy:latest
+    image: lokxy/local:latest
     container_name: lokxy
     volumes:
       - "./lokxy:/config"
@@ -101,7 +101,7 @@ services:
     networks:
       - play
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_EXPORTER_OTLP_INSECURE=true
 
   otel-collector:
