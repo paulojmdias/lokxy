@@ -66,7 +66,6 @@ tag:
 	@git tag -a $(TAG) -m "chore(release): $(TAG)"
 	@git push origin $(TAG)
 
-
 .PHONY: helm-docs
 helm-docs:
 	$(CONTAINER_ENGINE) run --rm \
