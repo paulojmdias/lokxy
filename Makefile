@@ -67,6 +67,7 @@ tag:
 	@git push origin $(TAG)
 	$(CONTAINER_ENGINE) build -f Dockerfile.local --load -t lokxy:latest .
 
+
 .PHONY: helm-docs
 helm-docs:
 	$(CONTAINER_ENGINE) run --rm \
