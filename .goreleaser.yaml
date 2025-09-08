@@ -10,6 +10,10 @@ before:
     - go mod tidy
     - go mod download
 
+git:
+  ignore_tags:
+    - "lokxy-*"
+
 metadata:
   mod_timestamp: "{{ .CommitTimestamp }}"
 
