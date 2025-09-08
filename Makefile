@@ -45,7 +45,7 @@ testlocal-build:
 .PHONY: tag
 tag:
 	@if [ -z "$(TAG)" ]; then \
-		echo "TAG is required. Usage: TAG=v0.4.0 make release"; \
+		echo "TAG is required. Usage: TAG=v0.4.0 make tag"; \
 		exit 1; \
 	fi
 
@@ -65,8 +65,6 @@ tag:
 	@git commit --allow-empty -m "chore: release $(TAG)"
 	@git tag -a $(TAG) -m "chore(release): $(TAG)"
 	@git push origin $(TAG)
-	$(CONTAINER_ENGINE) build -f Dockerfile.local --load -t lokxy:latest .
-
 
 .PHONY: helm-docs
 helm-docs:
