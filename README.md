@@ -155,6 +155,12 @@ logging:
     * `level`: Defines the log level (`debug`, `info`, `warn`, `error`).
     * `format`: The log output format, either in `json` or `logfmt`.
 
+### Tracing Configuration
+
+The application includes tracing instrumentation using OpenTelemetry. To collect traces, deploy an OpenTelemetry Collector or compatible tracing backend such as Jaeger, Grafana Tempo, or Zipkin.
+
+Configure the trace export destination using standard OpenTelemetry environment variables: `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` for the collector endpoint, or `OTEL_EXPORTER_OTLP_ENDPOINT` as a fallback. Set `OTEL_EXPORTER_OTLP_INSECURE=true` for development environments using insecure gRPC connections. If no endpoint is configured, the application defaults to `localhost:4317` as per [otlp exporter documentation](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/). An example of this can also be fund in `mixin/play/`.
+
 ## Usage
 
 Once `lokxy` is running, you can query Loki instances by sending HTTP requests to the proxy.
@@ -175,3 +181,7 @@ curl "http://localhost:3100/loki/api/v1/query?query={job=\"myapp\"}"
 ```
 
 Logs from all configured Loki instances will be aggregated and returned.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=paulojmdias/lokxy&type=Date)](https://www.star-history.com/#paulojmdias/lokxy&Date)

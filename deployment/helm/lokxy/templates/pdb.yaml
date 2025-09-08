@@ -1,0 +1,26 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: {{ include "lokxy.podDisruptionBudget.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "lokxy.fullname" . }}
+  namespace: {{ include "lokxy.namespace" . }}
+  labels:
+    {{- include "lokxy.common.matchLabels" . | nindent 4 }}
+    {{- include "lokxy.common.metaLabels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.global.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.podDisruptionBudget.annotations }}
+    {{ toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "lokxy.common.matchLabels" . | nindent 6 }}
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- else if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+{{- end }}

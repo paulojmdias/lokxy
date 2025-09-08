@@ -45,7 +45,7 @@ func TestInitMetrics(t *testing.T) {
 	metricsData := rr.Body.String()
 
 	// Look for the metric with its full format including OpenTelemetry labels
-	if !strings.Contains(metricsData, `lokxy_request_count_total{otel_scope_name="lokxy",otel_scope_version=""} 5`) {
+	if !strings.Contains(metricsData, `lokxy_request_count_total{otel_scope_name="lokxy",otel_scope_schema_url="",otel_scope_version=""} 5`) {
 		t.Errorf("Expected metric not found in output")
 		t.Logf("Metrics output:\n%s", metricsData)
 	}
