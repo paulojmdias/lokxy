@@ -10,7 +10,7 @@
 * improve json unmarshall ([8041829](https://github.com/paulojmdias/lokxy/commit/8041829205035f59ff089ab8a5925d99830ba764))
 * improve r.body ([cfc7ed4](https://github.com/paulojmdias/lokxy/commit/cfc7ed43eb7ac7498599246390dfc34ec8e014a2))
 * improvements to avoid results being null ([fc53c25](https://github.com/paulojmdias/lokxy/commit/fc53c2538d13aa78cb45c4b6810c24a2e0f802dc))
-* remove uneeded else condition ([030e94f](https://github.com/paulojmdias/lokxy/commit/030e94f38e8626f90c69c531ce6422faffcab82a))
+* remove unneeded else condition ([030e94f](https://github.com/paulojmdias/lokxy/commit/030e94f38e8626f90c69c531ce6422faffcab82a))
 
 # [0.2.0](https://github.com/paulojmdias/lokxy/compare/0.1.2...0.2.0) (2025-03-06)
 
