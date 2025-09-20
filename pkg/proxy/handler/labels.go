@@ -8,56 +8,62 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	proxyErrors "github.com/paulojmdias/lokxy/pkg/proxy/errors"
 )
 
+// HandleLokiLabels handles /labels requests
 func HandleLokiLabels(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	mergedLabelValues := make(map[string]struct{})
+	hadResponse := false
 
 	for resp := range results {
 		defer resp.Body.Close()
+		hadResponse = true
 
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to read response body", "err", err)
-			continue
+			level.Error(logger).Log("msg", proxyErrors.ErrReadBodyFailed.Error(), "err", err)
+			proxyErrors.WriteJSONError(w, http.StatusBadGateway, proxyErrors.ErrReadBodyFailed.Error())
+			return
 		}
 
-		// Log the raw body for debugging
-		level.Debug(logger).Log("msg", "Received body for label values", "body", string(bodyBytes))
+		if !json.Valid(bodyBytes) {
+			proxyErrors.WriteJSONError(w, resp.StatusCode, string(bodyBytes))
+			return
+		}
 
-		// Unmarshal into a struct that matches the actual response format
 		var labelResponse struct {
 			Status string   `json:"status"`
 			Data   []string `json:"data"`
 		}
-
 		if err := json.Unmarshal(bodyBytes, &labelResponse); err != nil {
-			level.Error(logger).Log("msg", "Failed to unmarshal label values response", "err", err)
-			continue
+			level.Error(logger).Log("msg", proxyErrors.ErrUnmarshalFailed.Error(), "err", err)
+			proxyErrors.WriteJSONError(w, http.StatusBadGateway, proxyErrors.ErrUnmarshalFailed.Error())
+			return
 		}
 
-		// Merge the label values
 		for _, value := range labelResponse.Data {
 			mergedLabelValues[value] = struct{}{}
 		}
 	}
 
-	// Prepare the merged list of label values
+	if !hadResponse {
+		proxyErrors.WriteJSONError(w, http.StatusBadGateway, proxyErrors.ErrNoUpstream.Error())
+		return
+	}
+
 	finalLabelValues := make([]string, 0, len(mergedLabelValues))
 	for value := range mergedLabelValues {
 		finalLabelValues = append(finalLabelValues, value)
 	}
-
-	// Sort the final list for consistency
 	sort.Strings(finalLabelValues)
 
-	// Encode the final response
 	finalResponse := map[string]any{
 		"status": "success",
 		"data":   finalLabelValues,
 	}
-
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
-		level.Error(logger).Log("msg", "Failed to encode final response for label values", "err", err)
+		level.Error(logger).Log("msg", proxyErrors.ErrForwardingFailed.Error(), "err", err)
+		proxyErrors.WriteJSONError(w, http.StatusInternalServerError, proxyErrors.ErrForwardingFailed.Error())
 	}
 }
