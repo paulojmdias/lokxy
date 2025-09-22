@@ -14,10 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
-	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
-	proxyErrors "github.com/paulojmdias/lokxy/pkg/proxy/errors"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 )
 
 // WebSocket upgrader
@@ -25,21 +21,20 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(_ *http.Request) bool {
-		return true // allow all origins
+		return true
 	},
 }
 
-// createWebSocketDialer builds a dialer with TLS if needed
+// Create WebSocket dialer with TLS config
 func createWebSocketDialer(instance cfg.ServerGroup, logger log.Logger) (*websocket.Dialer, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: instance.HTTPClientConfig.TLSConfig.InsecureSkipVerify,
 	}
 
-	// Load CA cert
 	if instance.HTTPClientConfig.TLSConfig.CAFile != "" {
 		caCert, err := os.ReadFile(instance.HTTPClientConfig.TLSConfig.CAFile)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to load CA certificate", "file", instance.HTTPClientConfig.TLSConfig.CAFile, "err", err)
+			level.Error(logger).Log("msg", "Failed to load CA certificate", "err", err)
 			return nil, err
 		}
 		caCertPool := x509.NewCertPool()
@@ -47,11 +42,10 @@ func createWebSocketDialer(instance cfg.ServerGroup, logger log.Logger) (*websoc
 		tlsConfig.RootCAs = caCertPool
 	}
 
-	// Load client certs
 	if instance.HTTPClientConfig.TLSConfig.CertFile != "" && instance.HTTPClientConfig.TLSConfig.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(instance.HTTPClientConfig.TLSConfig.CertFile, instance.HTTPClientConfig.TLSConfig.KeyFile)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to load client certs", "err", err)
+			level.Error(logger).Log("msg", "Failed to load client cert", "err", err)
 			return nil, err
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
@@ -64,46 +58,27 @@ func createWebSocketDialer(instance cfg.ServerGroup, logger log.Logger) (*websoc
 	}, nil
 }
 
-// HandleTailWebSocket upgrades the client connection and streams logs
+// HandleTailWebSocket proxies Loki's /tail endpoint
 func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Config, logger log.Logger) {
-	ctx := r.Context()
-	ctx, span := traces.CreateSpan(ctx, "websocket_tail_handler")
-	defer span.End()
-
-	span.SetAttributes(attribute.Int("server_groups", len(config.ServerGroups)))
-
-	// unwrap ResponseWriter if wrapped by traces.go
-	realWriter := w
-	if uw, ok := w.(interface{ Unwrap() http.ResponseWriter }); ok {
-		realWriter = uw.Unwrap()
-	}
-
 	// Upgrade client connection
-	clientConn, err := upgrader.Upgrade(realWriter, r, nil)
+	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "Failed to upgrade WebSocket")
-		level.Error(logger).Log("msg", proxyErrors.ErrUpgradeFailed.Error(), "err", err)
-		proxyErrors.WriteJSONError(w, http.StatusBadRequest, proxyErrors.ErrUpgradeFailed.Error())
+		level.Error(logger).Log("msg", "Failed to upgrade client WS", "err", err)
+		http.Error(w, `{"status":"error","message":"failed to upgrade WebSocket connection"}`, http.StatusBadRequest)
 		return
 	}
 	defer clientConn.Close()
-	span.SetAttributes(attribute.Bool("websocket.upgraded", true))
 
 	mergedResponses := make(chan map[string]any)
 	var wg sync.WaitGroup
 	var connectedBackend int
-	var backendMutex sync.Mutex
+	var mu sync.Mutex
 
-	// loop through backends
 	for _, instance := range config.ServerGroups {
 		wg.Add(1)
 		go func(instance cfg.ServerGroup) {
 			defer wg.Done()
-			_, backendSpan := traces.CreateSpan(ctx, "tail_upstream")
-			defer backendSpan.End()
 
-			// rewrite URL -> ws(s)://
 			targetURL := instance.URL
 			if after, ok := strings.CutPrefix(targetURL, "http://"); ok {
 				targetURL = "ws://" + after
@@ -115,12 +90,9 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 				targetURL += "?" + r.URL.RawQuery
 			}
 
-			backendSpan.SetAttributes(attribute.String("upstream.url", targetURL))
-
 			dialer, err := createWebSocketDialer(instance, logger)
 			if err != nil {
-				backendSpan.RecordError(err)
-				level.Error(logger).Log("msg", "Dialer failed", "err", err)
+				level.Error(logger).Log("msg", "Failed to create dialer", "err", err)
 				return
 			}
 
@@ -129,46 +101,47 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 				headers.Set(k, v)
 			}
 
-			conn, resp, err := dialer.Dial(targetURL, headers)
+			backendConn, resp, err := dialer.Dial(targetURL, headers)
 			if err != nil {
-				backendSpan.RecordError(err)
-				backendSpan.SetStatus(codes.Error, "Failed to dial upstream")
+				level.Error(logger).Log("msg", "Failed to connect upstream Loki WS", "url", targetURL, "err", err)
 				if resp != nil {
+					// Forward Loki’s error response directly
 					body, _ := io.ReadAll(resp.Body)
-					level.Error(logger).Log("msg", "Handshake failed", "status", resp.StatusCode, "body", string(body))
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(resp.StatusCode)
+					_, _ = w.Write(body)
 				}
-				level.Error(logger).Log("msg", proxyErrors.ErrBackendDialFailed.Error(), "err", err)
 				return
 			}
-			defer conn.Close()
+			defer backendConn.Close()
 
-			backendMutex.Lock()
+			mu.Lock()
 			connectedBackend++
-			backendMutex.Unlock()
+			mu.Unlock()
 
 			for {
-				_, msg, err := conn.ReadMessage()
+				_, msg, err := backendConn.ReadMessage()
 				if err != nil {
-					backendSpan.RecordError(err)
-					level.Error(logger).Log("msg", proxyErrors.ErrReadMessageFailed.Error(), "err", err)
+					level.Error(logger).Log("msg", "Failed to read from upstream WS", "err", err)
 					return
 				}
-				var result map[string]any
-				if err := json.Unmarshal(msg, &result); err != nil {
-					backendSpan.RecordError(err)
-					level.Error(logger).Log("msg", "JSON unmarshal failed", "err", err)
+
+				var decoded map[string]any
+				if err := json.Unmarshal(msg, &decoded); err != nil {
+					level.Error(logger).Log("msg", "Failed to decode upstream WS message", "err", err)
 					return
 				}
-				mergedResponses <- result
+
+				mergedResponses <- decoded
 			}
 		}(instance)
 	}
 
-	// forward to client
+	// Forward merged messages to client
 	go func() {
 		for resp := range mergedResponses {
 			if err := clientConn.WriteJSON(resp); err != nil {
-				level.Error(logger).Log("msg", proxyErrors.ErrWriteMessageFailed.Error(), "err", err)
+				level.Error(logger).Log("msg", "Failed to write to client WS", "err", err)
 				return
 			}
 		}
@@ -177,7 +150,7 @@ func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Con
 	wg.Wait()
 	close(mergedResponses)
 
-	backendMutex.Lock()
-	span.SetAttributes(attribute.Int("upstreams.connected", connectedBackend))
-	backendMutex.Unlock()
+	mu.Lock()
+	level.Info(logger).Log("msg", "WebSocket tail completed", "connected_backends", connectedBackend)
+	mu.Unlock()
 }

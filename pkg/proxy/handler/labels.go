@@ -8,28 +8,27 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	proxyErrors "github.com/paulojmdias/lokxy/pkg/proxy/errors"
 )
 
-// HandleLokiLabels handles /labels requests
 func HandleLokiLabels(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	mergedLabelValues := make(map[string]struct{})
-	hadResponse := false
 
 	for resp := range results {
 		defer resp.Body.Close()
-		hadResponse = true
 
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			level.Error(logger).Log("msg", proxyErrors.ErrReadBodyFailed.Error(), "err", err)
-			proxyErrors.WriteJSONError(w, http.StatusBadGateway, proxyErrors.ErrReadBodyFailed.Error())
+		// Forward upstream error responses directly
+		if resp.StatusCode >= 400 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write(bodyBytes)
 			return
 		}
 
-		if !json.Valid(bodyBytes) {
-			proxyErrors.WriteJSONError(w, resp.StatusCode, string(bodyBytes))
-			return
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			level.Error(logger).Log("msg", "Failed to read response body", "err", err)
+			continue
 		}
 
 		var labelResponse struct {
@@ -37,19 +36,13 @@ func HandleLokiLabels(w http.ResponseWriter, results <-chan *http.Response, logg
 			Data   []string `json:"data"`
 		}
 		if err := json.Unmarshal(bodyBytes, &labelResponse); err != nil {
-			level.Error(logger).Log("msg", proxyErrors.ErrUnmarshalFailed.Error(), "err", err)
-			proxyErrors.WriteJSONError(w, http.StatusBadGateway, proxyErrors.ErrUnmarshalFailed.Error())
-			return
+			level.Error(logger).Log("msg", "Failed to unmarshal label values response", "err", err)
+			continue
 		}
 
 		for _, value := range labelResponse.Data {
 			mergedLabelValues[value] = struct{}{}
 		}
-	}
-
-	if !hadResponse {
-		proxyErrors.WriteJSONError(w, http.StatusBadGateway, proxyErrors.ErrNoUpstream.Error())
-		return
 	}
 
 	finalLabelValues := make([]string, 0, len(mergedLabelValues))
@@ -62,8 +55,6 @@ func HandleLokiLabels(w http.ResponseWriter, results <-chan *http.Response, logg
 		"status": "success",
 		"data":   finalLabelValues,
 	}
-	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
-		level.Error(logger).Log("msg", proxyErrors.ErrForwardingFailed.Error(), "err", err)
-		proxyErrors.WriteJSONError(w, http.StatusInternalServerError, proxyErrors.ErrForwardingFailed.Error())
-	}
+
+	_ = json.NewEncoder(w).Encode(finalResponse)
 }
