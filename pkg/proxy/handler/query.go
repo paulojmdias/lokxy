@@ -9,10 +9,9 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats" // For statistics
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
-// Handle Loki query and query_range responses
 func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
@@ -24,41 +23,36 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 	for resp := range results {
 		defer resp.Body.Close()
 
-		// Read the entire body
+		// Forward upstream error responses directly
+		if resp.StatusCode >= 400 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write(bodyBytes)
+			return
+		}
+
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			level.Error(logger).Log("msg", "Failed to read response body", "err", err)
 			continue
 		}
 
-		// Log the full body for debugging
-		level.Debug(logger).Log("msg", "Complete body received", "body", string(bodyBytes))
-
-		// Decode into map[string]any to inspect the raw structure
 		var rawBody map[string]any
-		bodyStr := string(bodyBytes)
 		if json.Valid(bodyBytes) {
-			if err := json.Unmarshal(bodyBytes, &rawBody); err != nil {
-				level.Error(logger).Log("msg", "Failed to decode JSON", "err", err)
-			} else {
-				level.Debug(logger).Log("msg", "Raw JSON body", "rawBody", bodyStr)
-			}
-		} else {
-			level.Debug(logger).Log("msg", "Raw body is not JSON", "rawBody", bodyStr)
+			_ = json.Unmarshal(bodyBytes, &rawBody)
 		}
 
-		// Check if encodingFlags is present in the response and extract it
 		if data, ok := rawBody["data"].(map[string]any); ok {
 			if flags, ok := data["encodingFlags"].([]any); ok {
 				for _, flag := range flags {
 					if flagStr, ok := flag.(string); ok {
-						encodingFlagsMap[flagStr] = struct{}{} // Add to map for uniqueness
+						encodingFlagsMap[flagStr] = struct{}{}
 					}
 				}
 			}
 		}
 
-		// Attempt to decode into the expected loghttp.QueryResponse structure
 		var queryResult loghttp.QueryResponse
 		if err := json.Unmarshal(bodyBytes, &queryResult); err != nil {
 			level.Error(logger).Log("msg", "Failed to unmarshal into loghttp.QueryResponse", "err", err)
@@ -67,40 +61,25 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 
 		resultType = queryResult.Data.ResultType
 
-		// Process based on ResultType
 		switch queryResult.Data.ResultType {
 		case loghttp.ResultTypeStream:
-			streams, ok := queryResult.Data.Result.(loghttp.Streams)
-			if !ok {
-				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Streams")
-				continue
+			if streams, ok := queryResult.Data.Result.(loghttp.Streams); ok {
+				mergedStreams = append(mergedStreams, streams...)
 			}
-			mergedStreams = append(mergedStreams, streams...)
-
 		case loghttp.ResultTypeMatrix:
-			matrix, ok := queryResult.Data.Result.(loghttp.Matrix)
-			if !ok {
-				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Matrix")
-				continue
+			if matrix, ok := queryResult.Data.Result.(loghttp.Matrix); ok {
+				mergedMatrix = append(mergedMatrix, matrix...)
 			}
-			mergedMatrix = append(mergedMatrix, matrix...)
-
 		case loghttp.ResultTypeVector:
-			vector, ok := queryResult.Data.Result.(loghttp.Vector)
-			if !ok {
-				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Vector")
-				continue
+			if vector, ok := queryResult.Data.Result.(loghttp.Vector); ok {
+				mergedVector = append(mergedVector, vector...)
 			}
-			mergedVector = append(mergedVector, vector...)
 		}
 
-		// Merge statistics
 		mergedStats.Merge(queryResult.Data.Statistics)
 	}
 
-	// Prepare final response
 	var finalResult any = []any{}
-
 	switch resultType {
 	case loghttp.ResultTypeStream:
 		var formattedResults []map[string]any
@@ -111,43 +90,29 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 					strconv.FormatInt(entry.Timestamp.UnixNano(), 10),
 					entry.Line,
 				}
-
-				// Create a map to hold both structuredMetadata and parsed, if they exist
 				metadata := make(map[string]any)
-
-				// Add structuredMetadata if it exists
 				if len(entry.StructuredMetadata) > 0 {
 					metadata["structuredMetadata"] = entry.StructuredMetadata
 				}
-
-				// Add parsed if it exists
 				if len(entry.Parsed) > 0 {
 					metadata["parsed"] = entry.Parsed
 				}
-
-				// If the metadata map is not empty, append it to the values
 				if len(metadata) > 0 {
 					values[i] = append(values[i], metadata)
 				}
 			}
-
-			// Add each stream and its corresponding values to the result
 			formattedResults = append(formattedResults, map[string]any{
 				"stream": stream.Labels,
 				"values": values,
 			})
 		}
 		finalResult = formattedResults
-
 	case loghttp.ResultTypeMatrix:
 		var formattedMatrix []map[string]any
 		for _, matrixEntry := range mergedMatrix {
 			values := make([][]any, len(matrixEntry.Values))
 			for i, value := range matrixEntry.Values {
-				values[i] = []any{
-					value.Timestamp.Unix(),
-					value.Value,
-				}
+				values[i] = []any{value.Timestamp.Unix(), value.Value}
 			}
 			formattedMatrix = append(formattedMatrix, map[string]any{
 				"metric": matrixEntry.Metric,
@@ -155,16 +120,12 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 			})
 		}
 		finalResult = formattedMatrix
-
 	case loghttp.ResultTypeVector:
 		var formattedVector []map[string]any
 		for _, vectorEntry := range mergedVector {
 			formattedVector = append(formattedVector, map[string]any{
 				"metric": vectorEntry.Metric,
-				"value": []any{
-					vectorEntry.Timestamp,
-					vectorEntry.Value,
-				},
+				"value":  []any{vectorEntry.Timestamp, vectorEntry.Value},
 			})
 		}
 		finalResult = formattedVector
@@ -179,19 +140,13 @@ func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, log
 		},
 	}
 
-	// Convert map back to a slice of strings
 	var encodingFlags []string
 	for flag := range encodingFlagsMap {
 		encodingFlags = append(encodingFlags, flag)
 	}
-
-	// Only add encodingFlags if it's defined in any of the responses
 	if len(encodingFlags) > 0 {
 		finalResponse["data"].(map[string]any)["encodingFlags"] = encodingFlags
 	}
 
-	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
-		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
-	}
-
+	_ = json.NewEncoder(w).Encode(finalResponse)
 }

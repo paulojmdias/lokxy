@@ -15,14 +15,21 @@ func HandleLokiStats(w http.ResponseWriter, results <-chan *http.Response, logge
 	for resp := range results {
 		defer resp.Body.Close()
 
-		// Read the entire body
+		// Forward upstream error responses directly
+		if resp.StatusCode >= 400 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write(bodyBytes)
+			return
+		}
+
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			level.Error(logger).Log("msg", "Failed to read response body", "err", err)
 			continue
 		}
 
-		// Parse the stats response
 		var statsResponse struct {
 			Streams int `json:"streams"`
 			Chunks  int `json:"chunks"`
@@ -34,14 +41,12 @@ func HandleLokiStats(w http.ResponseWriter, results <-chan *http.Response, logge
 			continue
 		}
 
-		// Sum stats from each endpoint
 		totalStreams += statsResponse.Streams
 		totalChunks += statsResponse.Chunks
 		totalBytes += statsResponse.Bytes
 		totalEntries += statsResponse.Entries
 	}
 
-	// Prepare final merged stats response
 	finalStatsResponse := map[string]any{
 		"streams": totalStreams,
 		"chunks":  totalChunks,
@@ -49,8 +54,5 @@ func HandleLokiStats(w http.ResponseWriter, results <-chan *http.Response, logge
 		"entries": totalEntries,
 	}
 
-	// Send the merged stats response back to the client
-	if err := json.NewEncoder(w).Encode(finalStatsResponse); err != nil {
-		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
-	}
+	_ = json.NewEncoder(w).Encode(finalStatsResponse)
 }
