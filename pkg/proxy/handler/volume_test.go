@@ -65,7 +65,7 @@ func TestHandleLokiVolume(t *testing.T) {
 				}`,
 			},
 			expectedVolumes: 2,
-			expectedStatus:  "success",
+			expectedStatus:  statusSuccess,
 		},
 		{
 			name: "empty response",
@@ -77,7 +77,7 @@ func TestHandleLokiVolume(t *testing.T) {
 				}
 			}`},
 			expectedVolumes: 0,
-			expectedStatus:  "success",
+			expectedStatus:  statusSuccess,
 		},
 	}
 
@@ -140,7 +140,7 @@ func TestHandleLokiVolumeWithInvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 
-	if volumeResponse.Status != "success" {
+	if volumeResponse.Status != statusSuccess {
 		t.Errorf("Expected status success, got %s", volumeResponse.Status)
 	}
 
@@ -173,7 +173,7 @@ func TestHandleLokiVolumeResponseReaderError(t *testing.T) {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 
-	if volumeResponse.Status != "success" {
+	if volumeResponse.Status != statusSuccess {
 		t.Errorf("Expected status success, got %s", volumeResponse.Status)
 	}
 
@@ -288,7 +288,7 @@ func TestHandleLokiVolumeRange(t *testing.T) {
 				t.Errorf("Expected status success, got %s", volumeResponse.Status)
 			}
 
-			if volumeResponse.Data.ResultType != "matrix" {
+			if volumeResponse.Data.ResultType != resultTypeMatrix {
 				t.Errorf("Expected resultType matrix, got %s", volumeResponse.Data.ResultType)
 			}
 

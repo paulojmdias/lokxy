@@ -11,6 +11,12 @@ import (
 	"github.com/go-kit/log/level"
 )
 
+const (
+	resultTypeVector = "vector"
+	resultTypeMatrix = "matrix"
+	statusSuccess    = "success"
+)
+
 // VolumeResponse represents the structure of the volume response from Loki
 type VolumeResponse struct {
 	Status string     `json:"status"`
@@ -59,7 +65,7 @@ func HandleLokiVolume(w http.ResponseWriter, results <-chan *http.Response, logg
 
 			if existingVolume, exists := volumeMap[metricKey]; exists {
 				// Aggregate values - sum volume data
-				if volumeResponse.Data.ResultType == "vector" {
+				if volumeResponse.Data.ResultType == resultTypeVector {
 					// For vector responses, sum the values
 					if len(volume.Value) >= 2 && len(existingVolume.Value) >= 2 {
 						existingVal := parseVolumeValue(existingVolume.Value[1])
@@ -67,7 +73,7 @@ func HandleLokiVolume(w http.ResponseWriter, results <-chan *http.Response, logg
 						summedValue := existingVal + newVal
 						existingVolume.Value[1] = strconv.FormatInt(summedValue, 10)
 					}
-				} else if volumeResponse.Data.ResultType == "matrix" {
+				} else if volumeResponse.Data.ResultType == resultTypeMatrix {
 					// For matrix responses, merge the values arrays
 					existingVolume.Values = mergeMatrixValues(existingVolume.Values, volume.Values)
 				}
@@ -93,14 +99,14 @@ func HandleLokiVolume(w http.ResponseWriter, results <-chan *http.Response, logg
 	})
 
 	// Determine result type - default to vector unless we have matrix data
-	resultType := "vector"
+	resultType := resultTypeVector
 	if len(mergedVolumes) > 0 && len(mergedVolumes[0].Values) > 0 {
-		resultType = "matrix"
+		resultType = resultTypeMatrix
 	}
 
 	// Prepare the final response
 	finalResponse := VolumeResponse{
-		Status: "success",
+		Status: statusSuccess,
 		Data: VolumeData{
 			ResultType: resultType,
 			Result:     mergedVolumes,
@@ -163,9 +169,9 @@ func HandleLokiVolumeRange(w http.ResponseWriter, results <-chan *http.Response,
 
 	// Prepare the final response - always matrix for volume_range
 	finalResponse := VolumeResponse{
-		Status: "success",
+		Status: statusSuccess,
 		Data: VolumeData{
-			ResultType: "matrix",
+			ResultType: resultTypeMatrix,
 			Result:     mergedVolumes,
 		},
 	}
@@ -216,11 +222,11 @@ func parseVolumeValue(value any) int64 {
 }
 
 // mergeMatrixValues merges two matrix value arrays, summing values at same timestamps
-func mergeMatrixValues(existing, new [][]any) [][]any {
+func mergeMatrixValues(existing, newValues [][]any) [][]any {
 	if len(existing) == 0 {
-		return new
+		return newValues
 	}
-	if len(new) == 0 {
+	if len(newValues) == 0 {
 		return existing
 	}
 
@@ -236,8 +242,8 @@ func mergeMatrixValues(existing, new [][]any) [][]any {
 		}
 	}
 
-	// Add/merge new data
-	for _, point := range new {
+	// Add/merge newValues data
+	for _, point := range newValues {
 		if len(point) >= 2 {
 			timestamp := point[0]
 			value := parseVolumeValue(point[1])
