@@ -49,8 +49,8 @@ func TestHandleLokiDetectedLabels(t *testing.T) {
 			expectedLabels: 3,
 		},
 		{
-			name: "empty response",
-			responses: []string{`{ "detectedLabels": [] }`},
+			name:           "empty response",
+			responses:      []string{`{ "detectedLabels": [] }`},
 			expectedLabels: 0,
 		},
 	}
@@ -158,4 +158,7 @@ type failingDetectedLabelsReader struct{}
 func (f *failingDetectedLabelsReader) Read([]byte) (int, error) {
 	return 0, errors.New("read error")
 }
-func (f *failingDetectedLabelsReader) Close() error { return nil }
+
+func (f *failingDetectedLabelsReader) Close() error {
+	return nil
+}
