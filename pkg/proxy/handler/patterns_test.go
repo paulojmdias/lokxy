@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHandleLokiPatterns_SingleResponse(t *testing.T) {
@@ -33,25 +35,17 @@ func TestHandleLokiPatterns_SingleResponse(t *testing.T) {
 	HandleLokiPatterns(w, results, logger)
 
 	var out LokiPatternsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
-	if out.Status != "success" {
-		t.Fatalf("expected status success, got %q", out.Status)
-	}
-	if len(out.Data) != 1 {
-		t.Fatalf("expected 1 pattern, got %d", len(out.Data))
-	}
+	require.Equal(t, "success", out.Status)
+	require.Len(t, out.Data, 1)
+
 	got := out.Data[0]
-	if got.Pattern != "<_> level=error method=/cortex.Ingester/Push" {
-		t.Fatalf("unexpected pattern: %q", got.Pattern)
-	}
+	assert.Equal(t, "<_> level=error method=/cortex.Ingester/Push", got.Pattern)
+
 	// ensure samples are sorted by ts asc
 	for i := 1; i < len(got.Samples); i++ {
-		if got.Samples[i-1][0] > got.Samples[i][0] {
-			t.Fatalf("samples not sorted by timestamp")
-		}
+		assert.LessOrEqual(t, got.Samples[i-1][0], got.Samples[i][0], "samples not sorted by timestamp")
 	}
 }
 
@@ -87,35 +81,28 @@ func TestHandleLokiPatterns_MergeAcrossBackends(t *testing.T) {
 	HandleLokiPatterns(w, results, logger)
 
 	var out LokiPatternsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
 	// Expected patterns: A, B, C (sorted)
-	if len(out.Data) != 3 {
-		t.Fatalf("expected 3 patterns, got %d", len(out.Data))
-	}
-	if out.Data[0].Pattern != "A" || out.Data[1].Pattern != "B" || out.Data[2].Pattern != "C" {
-		t.Fatalf("patterns not sorted or incorrect: %+v", out.Data)
-	}
+	require.Len(t, out.Data, 3)
+	assert.Equal(t, "A", out.Data[0].Pattern)
+	assert.Equal(t, "B", out.Data[1].Pattern)
+	assert.Equal(t, "C", out.Data[2].Pattern)
 
 	// Pattern A timestamps: 10->1, 20->2+3=5, 30->4
 	a := out.Data[0]
 	wantA := map[int64]int64{10: 1, 20: 5, 30: 4}
-	if len(a.Samples) != len(wantA) {
-		t.Fatalf("pattern A sample length mismatch: %d", len(a.Samples))
-	}
+	require.Len(t, a.Samples, len(wantA))
+	gotA := map[int64]int64{}
 	for _, pair := range a.Samples {
 		ts, cnt := pair[0], pair[1]
-		if wantA[ts] != cnt {
-			t.Fatalf("pattern A at ts %d: want %d got %d", ts, wantA[ts], cnt)
-		}
+		gotA[ts] = cnt
 	}
+	assert.Equal(t, wantA, gotA)
+
 	// ensure A.samples sorted by ts
 	for i := 1; i < len(a.Samples); i++ {
-		if a.Samples[i-1][0] > a.Samples[i][0] {
-			t.Fatalf("pattern A samples not sorted")
-		}
+		assert.LessOrEqual(t, a.Samples[i-1][0], a.Samples[i][0], "pattern A samples not sorted")
 	}
 }
 
@@ -133,12 +120,8 @@ func TestHandleLokiPatterns_Empty(t *testing.T) {
 	HandleLokiPatterns(w, results, logger)
 
 	var out LokiPatternsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(out.Data) != 0 {
-		t.Fatalf("expected empty data, got %d", len(out.Data))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	assert.Empty(t, out.Data)
 }
 
 func TestHandleLokiPatterns_InvalidJSON(t *testing.T) {
@@ -154,16 +137,10 @@ func TestHandleLokiPatterns_InvalidJSON(t *testing.T) {
 	HandleLokiPatterns(w, results, logger)
 
 	var out LokiPatternsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 	// we should still return a valid (empty) success envelope
-	if out.Status != "success" && out.Status != "" {
-		t.Fatalf("unexpected status: %q", out.Status)
-	}
-	if len(out.Data) != 0 {
-		t.Fatalf("expected 0 patterns, got %d", len(out.Data))
-	}
+	assert.True(t, out.Status == "success" || out.Status == "")
+	assert.Empty(t, out.Data)
 }
 
 func TestHandleLokiPatterns_ResponseReaderError(t *testing.T) {
@@ -180,12 +157,8 @@ func TestHandleLokiPatterns_ResponseReaderError(t *testing.T) {
 	HandleLokiPatterns(w, results, logger)
 
 	var out LokiPatternsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(out.Data) != 0 {
-		t.Fatalf("expected 0 patterns, got %d", len(out.Data))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	assert.Empty(t, out.Data)
 }
 
 // failingPatternsReader always fails on Read (simulates network/IO failure).
@@ -193,8 +166,8 @@ type failingPatternsReader struct{}
 
 func (f *failingPatternsReader) Read([]byte) (int, error) {
 	return 0, errors.New("read error")
-
 }
+
 func (f *failingPatternsReader) Close() error {
 	return nil
 }
