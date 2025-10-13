@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHandleLokiVolume(t *testing.T) {
@@ -34,7 +36,7 @@ func TestHandleLokiVolume(t *testing.T) {
 				}
 			}`},
 			expectedVolumes: 1,
-			expectedStatus:  "success",
+			expectedStatus:  statusSuccess,
 		},
 		{
 			name: "multiple responses with different metrics",
@@ -83,10 +85,8 @@ func TestHandleLokiVolume(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a channel to simulate responses
 			results := make(chan *http.Response, len(tt.responses))
 
-			// Create mock responses
 			for _, respBody := range tt.responses {
 				resp := httptest.NewRecorder()
 				resp.WriteString(respBody)
@@ -94,26 +94,14 @@ func TestHandleLokiVolume(t *testing.T) {
 			}
 			close(results)
 
-			// Create a response recorder
 			w := httptest.NewRecorder()
-
-			// Call the handler
 			HandleLokiVolume(w, results, logger)
 
-			// Parse the response
 			var volumeResponse VolumeResponse
-			if err := json.Unmarshal(w.Body.Bytes(), &volumeResponse); err != nil {
-				t.Fatalf("Failed to unmarshal response: %v", err)
-			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
 
-			// Verify the response
-			if volumeResponse.Status != tt.expectedStatus {
-				t.Errorf("Expected status %s, got %s", tt.expectedStatus, volumeResponse.Status)
-			}
-
-			if len(volumeResponse.Data.Result) != tt.expectedVolumes {
-				t.Errorf("Expected %d volumes, got %d", tt.expectedVolumes, len(volumeResponse.Data.Result))
-			}
+			assert.Equal(t, tt.expectedStatus, volumeResponse.Status)
+			assert.Len(t, volumeResponse.Data.Result, tt.expectedVolumes)
 		})
 	}
 }
@@ -121,38 +109,25 @@ func TestHandleLokiVolume(t *testing.T) {
 func TestHandleLokiVolumeWithInvalidJSON(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	// Create a channel with invalid JSON response
 	results := make(chan *http.Response, 1)
 	resp := httptest.NewRecorder()
 	resp.WriteString("invalid json")
 	results <- resp.Result()
 	close(results)
 
-	// Create a response recorder
 	w := httptest.NewRecorder()
-
-	// Call the handler
 	HandleLokiVolume(w, results, logger)
 
-	// Should return empty result but valid JSON
 	var volumeResponse VolumeResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &volumeResponse); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
 
-	if volumeResponse.Status != statusSuccess {
-		t.Errorf("Expected status success, got %s", volumeResponse.Status)
-	}
-
-	if len(volumeResponse.Data.Result) != 0 {
-		t.Errorf("Expected 0 volumes, got %d", len(volumeResponse.Data.Result))
-	}
+	assert.Equal(t, statusSuccess, volumeResponse.Status)
+	assert.Empty(t, volumeResponse.Data.Result)
 }
 
 func TestHandleLokiVolumeResponseReaderError(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	// Create a response with a reader that will fail
 	results := make(chan *http.Response, 1)
 	resp := &http.Response{
 		StatusCode: 200,
@@ -161,37 +136,23 @@ func TestHandleLokiVolumeResponseReaderError(t *testing.T) {
 	results <- resp
 	close(results)
 
-	// Create a response recorder
 	w := httptest.NewRecorder()
-
-	// Call the handler
 	HandleLokiVolume(w, results, logger)
 
-	// Should return empty result but valid JSON
 	var volumeResponse VolumeResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &volumeResponse); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
 
-	if volumeResponse.Status != statusSuccess {
-		t.Errorf("Expected status success, got %s", volumeResponse.Status)
-	}
-
-	if len(volumeResponse.Data.Result) != 0 {
-		t.Errorf("Expected 0 volumes, got %d", len(volumeResponse.Data.Result))
-	}
+	assert.Equal(t, statusSuccess, volumeResponse.Status)
+	assert.Empty(t, volumeResponse.Data.Result)
 }
 
-// failingReader is a helper type that always returns an error when read
+// failingReader is a helper that always returns an error
 type failingReader struct{}
 
 func (f *failingReader) Read([]byte) (int, error) {
 	return 0, errors.New("read error")
 }
-
-func (f *failingReader) Close() error {
-	return nil
-}
+func (f *failingReader) Close() error { return nil }
 
 func TestHandleLokiVolumeRange(t *testing.T) {
 	logger := log.NewNopLogger()
@@ -260,10 +221,7 @@ func TestHandleLokiVolumeRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a channel to simulate responses
 			results := make(chan *http.Response, len(tt.responses))
-
-			// Create mock responses
 			for _, respBody := range tt.responses {
 				resp := httptest.NewRecorder()
 				resp.WriteString(respBody)
@@ -271,30 +229,15 @@ func TestHandleLokiVolumeRange(t *testing.T) {
 			}
 			close(results)
 
-			// Create a response recorder
 			w := httptest.NewRecorder()
-
-			// Call the handler
 			HandleLokiVolumeRange(w, results, logger)
 
-			// Parse the response
 			var volumeResponse VolumeResponse
-			if err := json.Unmarshal(w.Body.Bytes(), &volumeResponse); err != nil {
-				t.Fatalf("Failed to unmarshal response: %v", err)
-			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
 
-			// Verify the response
-			if volumeResponse.Status != "success" {
-				t.Errorf("Expected status success, got %s", volumeResponse.Status)
-			}
-
-			if volumeResponse.Data.ResultType != resultTypeMatrix {
-				t.Errorf("Expected resultType matrix, got %s", volumeResponse.Data.ResultType)
-			}
-
-			if len(volumeResponse.Data.Result) != tt.expectedVolumes {
-				t.Errorf("Expected %d volumes, got %d", tt.expectedVolumes, len(volumeResponse.Data.Result))
-			}
+			assert.Equal(t, statusSuccess, volumeResponse.Status)
+			assert.Equal(t, resultTypeMatrix, volumeResponse.Data.ResultType)
+			assert.Len(t, volumeResponse.Data.Result, tt.expectedVolumes)
 		})
 	}
 }
