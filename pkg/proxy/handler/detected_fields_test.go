@@ -8,14 +8,16 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ---- Helpers ----
-// Renamed to avoid collision with failingReader in volume_test.go
+// Renamed to avoid collision with failingReader in other tests
 type failingDFReader struct{}
 
 func (f *failingDFReader) Read([]byte) (int, error) { return 0, errors.New("read error") }
-func (f *failingDFReader) Close() error             { return nil }
+func (f *failingDFReader) Close() error              { return nil }
 
 // ----------------- /detected_fields tests -----------------
 
@@ -39,21 +41,15 @@ func TestDetectedFields_VariantA_Single(t *testing.T) {
 	HandleLokiDetectedFields(w, results, logger)
 
 	var out LokiDetectedFieldsOut
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
-	if out.Limit == nil || *out.Limit != 1000 {
-		t.Fatalf("expected limit 1000, got %#v", out.Limit)
-	}
-	if len(out.Fields) != 2 {
-		t.Fatalf("expected 2 fields, got %d", len(out.Fields))
-	}
+	require.NotNil(t, out.Limit)
+	assert.Equal(t, 1000, *out.Limit)
+	assert.Len(t, out.Fields, 2)
+
 	// ensure sort by label
 	for i := 1; i < len(out.Fields); i++ {
-		if out.Fields[i-1].Label > out.Fields[i].Label {
-			t.Fatalf("fields not sorted")
-		}
+		assert.LessOrEqual(t, out.Fields[i-1].Label, out.Fields[i].Label, "fields not sorted")
 	}
 }
 
@@ -77,18 +73,15 @@ func TestDetectedFields_VariantB_Merge(t *testing.T) {
 	HandleLokiDetectedFields(w, results, logger)
 
 	var out LokiDetectedFieldsOut
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+
 	want := map[string]int{"job": 5, "instance": 1, "service": 4}
-	if len(out.Fields) != len(want) {
-		t.Fatalf("expected %d fields, got %d", len(want), len(out.Fields))
-	}
+	assert.Len(t, out.Fields, len(want))
+	got := map[string]int{}
 	for _, f := range out.Fields {
-		if want[f.Label] != f.Cardinality {
-			t.Fatalf("label %s: want %d got %d", f.Label, want[f.Label], f.Cardinality)
-		}
+		got[f.Label] = f.Cardinality
 	}
+	assert.Equal(t, want, got)
 }
 
 func TestDetectedFields_ParsersUnionAndType(t *testing.T) {
@@ -110,24 +103,14 @@ func TestDetectedFields_ParsersUnionAndType(t *testing.T) {
 	HandleLokiDetectedFields(w, results, logger)
 
 	var out LokiDetectedFieldsOut
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(out.Fields) != 1 {
-		t.Fatalf("expected 1 field, got %d", len(out.Fields))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+
+	require.Len(t, out.Fields, 1)
 	app := out.Fields[0]
-	if app.Cardinality != 5 {
-		t.Fatalf("cardinality want 5 got %d", app.Cardinality)
-	}
-	if app.Type != "string" {
-		t.Fatalf("type want string got %q", app.Type)
-	}
+	assert.Equal(t, 5, app.Cardinality)
+	assert.Equal(t, "string", app.Type)
 	// union of parsers = ["json","logfmt"] sorted
-	want := []string{"json", "logfmt"}
-	if len(app.Parsers) != 2 || app.Parsers[0] != want[0] || app.Parsers[1] != want[1] {
-		t.Fatalf("parsers want %v got %v", want, app.Parsers)
-	}
+	assert.Equal(t, []string{"json", "logfmt"}, app.Parsers)
 }
 
 func TestDetectedFields_InvalidJSONAndReaderErr(t *testing.T) {
@@ -144,12 +127,8 @@ func TestDetectedFields_InvalidJSONAndReaderErr(t *testing.T) {
 	HandleLokiDetectedFields(w, results, logger)
 
 	var out LokiDetectedFieldsOut
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(out.Fields) != 0 {
-		t.Fatalf("expected 0 fields, got %d", len(out.Fields))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	assert.Empty(t, out.Fields)
 }
 
 // ----------------- /detected_field/{name}/values tests -----------------
@@ -176,17 +155,11 @@ func TestDetectedFieldValues_SingleAndSorted(t *testing.T) {
 	HandleLokiDetectedFieldValues(w, results, fieldName, logger)
 
 	var out LokiDetectedFieldValuesResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if out.Field != fieldName {
-		t.Fatalf("field name mismatch: want %s got %s", fieldName, out.Field)
-	}
-	// sorted by value
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+
+	assert.Equal(t, fieldName, out.Field)
 	for i := 1; i < len(out.Values); i++ {
-		if out.Values[i-1].Value > out.Values[i].Value {
-			t.Fatalf("values not sorted")
-		}
+		assert.LessOrEqual(t, out.Values[i-1].Value, out.Values[i].Value, "values not sorted")
 	}
 }
 
@@ -211,19 +184,15 @@ func TestDetectedFieldValues_MergeAcrossBackends(t *testing.T) {
 	HandleLokiDetectedFieldValues(w, results, fieldName, logger)
 
 	var out LokiDetectedFieldValuesResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
 	want := map[string]int{"api": 5, "worker": 1, "scheduler": 4}
-	if len(out.Values) != len(want) {
-		t.Fatalf("expected %d values, got %d", len(want), len(out.Values))
-	}
+	assert.Len(t, out.Values, len(want))
+	got := map[string]int{}
 	for _, v := range out.Values {
-		if want[v.Value] != v.Count {
-			t.Fatalf("value %s: want %d got %d", v.Value, want[v.Value], v.Count)
-		}
+		got[v.Value] = v.Count
 	}
+	assert.Equal(t, want, got)
 }
 
 func TestDetectedFieldValues_InvalidJSONAndReaderErr(t *testing.T) {
@@ -241,10 +210,6 @@ func TestDetectedFieldValues_InvalidJSONAndReaderErr(t *testing.T) {
 	HandleLokiDetectedFieldValues(w, results, fieldName, logger)
 
 	var out LokiDetectedFieldValuesResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(out.Values) != 0 {
-		t.Fatalf("expected 0 values, got %d", len(out.Values))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	assert.Empty(t, out.Values)
 }
