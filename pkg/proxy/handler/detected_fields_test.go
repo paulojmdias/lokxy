@@ -16,8 +16,13 @@ import (
 // Renamed to avoid collision with failingReader in other tests
 type failingDFReader struct{}
 
-func (f *failingDFReader) Read([]byte) (int, error) { return 0, errors.New("read error") }
-func (f *failingDFReader) Close() error              { return nil }
+func (f *failingDFReader) Read([]byte) (int, error) {
+	return 0, errors.New("read error")
+}
+
+func (f *failingDFReader) Close() error {
+	return nil
+}
 
 // ----------------- /detected_fields tests -----------------
 
