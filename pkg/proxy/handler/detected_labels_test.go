@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHandleLokiDetectedLabels(t *testing.T) {
@@ -22,14 +24,8 @@ func TestHandleLokiDetectedLabels(t *testing.T) {
 			name: "single response",
 			responses: []string{`{
 				"detectedLabels": [
-					{
-						"label": "job",
-						"cardinality": 2
-					},
-					{
-						"label": "instance",
-						"cardinality": 1
-					}
+					{ "label": "job", "cardinality": 2 },
+					{ "label": "instance", "cardinality": 1 }
 				]
 			}`},
 			expectedLabels: 2,
@@ -39,26 +35,14 @@ func TestHandleLokiDetectedLabels(t *testing.T) {
 			responses: []string{
 				`{
 					"detectedLabels": [
-						{
-							"label": "job",
-							"cardinality": 2
-						},
-						{
-							"label": "instance",
-							"cardinality": 1
-						}
+						{ "label": "job", "cardinality": 2 },
+						{ "label": "instance", "cardinality": 1 }
 					]
 				}`,
 				`{
 					"detectedLabels": [
-						{
-							"label": "job",
-							"cardinality": 3
-						},
-						{
-							"label": "service",
-							"cardinality": 1
-						}
+						{ "label": "job", "cardinality": 3 },
+						{ "label": "service", "cardinality": 1 }
 					]
 				}`,
 			},
@@ -66,50 +50,37 @@ func TestHandleLokiDetectedLabels(t *testing.T) {
 		},
 		{
 			name: "empty response",
-			responses: []string{`{
-				"detectedLabels": []
-			}`},
+			responses: []string{`{ "detectedLabels": [] }`},
 			expectedLabels: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a channel to simulate responses
 			results := make(chan *http.Response, len(tt.responses))
-
-			// Create mock responses
-			for _, respBody := range tt.responses {
-				resp := httptest.NewRecorder()
-				resp.WriteString(respBody)
-				results <- resp.Result()
+			for _, body := range tt.responses {
+				rec := httptest.NewRecorder()
+				rec.WriteString(body)
+				results <- rec.Result()
 			}
 			close(results)
 
-			// Create a response recorder
 			w := httptest.NewRecorder()
-
-			// Call the handler
 			HandleLokiDetectedLabels(w, results, logger)
 
-			// Parse the response
-			var detectedLabelsResponse LokiDetectedLabelsResponse
-			if err := json.Unmarshal(w.Body.Bytes(), &detectedLabelsResponse); err != nil {
-				t.Fatalf("Failed to unmarshal response: %v", err)
-			}
+			var resp LokiDetectedLabelsResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
-			// Verify the response
-			if len(detectedLabelsResponse.DetectedLabels) != tt.expectedLabels {
-				t.Errorf("Expected %d labels, got %d", tt.expectedLabels, len(detectedLabelsResponse.DetectedLabels))
-			}
+			assert.Len(t, resp.DetectedLabels, tt.expectedLabels)
 
-			// Verify labels are sorted
-			for i := 1; i < len(detectedLabelsResponse.DetectedLabels); i++ {
-				if detectedLabelsResponse.DetectedLabels[i-1].Label > detectedLabelsResponse.DetectedLabels[i].Label {
-					t.Errorf("Labels are not sorted: %s > %s",
-						detectedLabelsResponse.DetectedLabels[i-1].Label,
-						detectedLabelsResponse.DetectedLabels[i].Label)
-				}
+			// ensure sorting order
+			for i := 1; i < len(resp.DetectedLabels); i++ {
+				assert.LessOrEqualf(t,
+					resp.DetectedLabels[i-1].Label,
+					resp.DetectedLabels[i].Label,
+					"Labels not sorted: %s > %s",
+					resp.DetectedLabels[i-1].Label,
+					resp.DetectedLabels[i].Label)
 			}
 		})
 	}
@@ -118,96 +89,52 @@ func TestHandleLokiDetectedLabels(t *testing.T) {
 func TestHandleLokiDetectedLabelsWithMerging(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	// Test merging logic specifically - cardinalities should be summed
 	responses := []string{
-		`{
-			"detectedLabels": [
-				{
-					"label": "job",
-					"cardinality": 2
-				}
-			]
-		}`,
-		`{
-			"detectedLabels": [
-				{
-					"label": "job",
-					"cardinality": 3
-				}
-			]
-		}`,
+		`{ "detectedLabels": [ { "label": "job", "cardinality": 2 } ] }`,
+		`{ "detectedLabels": [ { "label": "job", "cardinality": 3 } ] }`,
 	}
 
-	// Create a channel to simulate responses
 	results := make(chan *http.Response, len(responses))
-
-	// Create mock responses
-	for _, respBody := range responses {
-		resp := httptest.NewRecorder()
-		resp.WriteString(respBody)
-		results <- resp.Result()
+	for _, body := range responses {
+		rec := httptest.NewRecorder()
+		rec.WriteString(body)
+		results <- rec.Result()
 	}
 	close(results)
 
-	// Create a response recorder
 	w := httptest.NewRecorder()
-
-	// Call the handler
 	HandleLokiDetectedLabels(w, results, logger)
 
-	// Parse the response
-	var detectedLabelsResponse LokiDetectedLabelsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &detectedLabelsResponse); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
+	var resp LokiDetectedLabelsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
-	// Should have 1 label with cardinality = 2 + 3 = 5
-	if len(detectedLabelsResponse.DetectedLabels) != 1 {
-		t.Errorf("Expected 1 label, got %d", len(detectedLabelsResponse.DetectedLabels))
-	}
-
-	jobLabel := detectedLabelsResponse.DetectedLabels[0]
-	if jobLabel.Label != "job" {
-		t.Errorf("Expected label 'job', got %s", jobLabel.Label)
-	}
-
-	expectedCardinality := 5
-	if jobLabel.Cardinality != expectedCardinality {
-		t.Errorf("Expected cardinality %d, got %d", expectedCardinality, jobLabel.Cardinality)
-	}
+	require.Len(t, resp.DetectedLabels, 1)
+	label := resp.DetectedLabels[0]
+	assert.Equal(t, "job", label.Label)
+	assert.Equal(t, 5, label.Cardinality)
 }
 
 func TestHandleLokiDetectedLabelsWithInvalidJSON(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	// Create a channel with invalid JSON response
 	results := make(chan *http.Response, 1)
-	resp := httptest.NewRecorder()
-	resp.WriteString("invalid json")
-	results <- resp.Result()
+	rec := httptest.NewRecorder()
+	rec.WriteString("invalid json")
+	results <- rec.Result()
 	close(results)
 
-	// Create a response recorder
 	w := httptest.NewRecorder()
-
-	// Call the handler
 	HandleLokiDetectedLabels(w, results, logger)
 
-	// Should return empty result but valid JSON
-	var detectedLabelsResponse LokiDetectedLabelsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &detectedLabelsResponse); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
+	var resp LokiDetectedLabelsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
-	if len(detectedLabelsResponse.DetectedLabels) != 0 {
-		t.Errorf("Expected 0 labels, got %d", len(detectedLabelsResponse.DetectedLabels))
-	}
+	assert.Empty(t, resp.DetectedLabels)
 }
 
 func TestHandleLokiDetectedLabelsResponseReaderError(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	// Create a response with a reader that will fail
 	results := make(chan *http.Response, 1)
 	resp := &http.Response{
 		StatusCode: 200,
@@ -216,30 +143,19 @@ func TestHandleLokiDetectedLabelsResponseReaderError(t *testing.T) {
 	results <- resp
 	close(results)
 
-	// Create a response recorder
 	w := httptest.NewRecorder()
-
-	// Call the handler
 	HandleLokiDetectedLabels(w, results, logger)
 
-	// Should return empty result but valid JSON
-	var detectedLabelsResponse LokiDetectedLabelsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &detectedLabelsResponse); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
+	var out LokiDetectedLabelsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
-	if len(detectedLabelsResponse.DetectedLabels) != 0 {
-		t.Errorf("Expected 0 labels, got %d", len(detectedLabelsResponse.DetectedLabels))
-	}
+	assert.Empty(t, out.DetectedLabels)
 }
 
-// failingDetectedLabelsReader is a helper type that always returns an error when read
+// failingDetectedLabelsReader always fails on Read
 type failingDetectedLabelsReader struct{}
 
 func (f *failingDetectedLabelsReader) Read([]byte) (int, error) {
 	return 0, errors.New("read error")
 }
-
-func (f *failingDetectedLabelsReader) Close() error {
-	return nil
-}
+func (f *failingDetectedLabelsReader) Close() error { return nil }
