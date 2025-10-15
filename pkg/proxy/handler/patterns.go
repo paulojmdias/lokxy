@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +10,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
+	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // LokiPatternEntry represents a single pattern block from Loki.
@@ -24,29 +30,50 @@ type LokiPatternsResponse struct {
 }
 
 // HandleLokiPatterns aggregates /patterns responses from multiple Loki instances.
-//
-// Each response is expected to be in the form:
-//
-//	{
-//	  "status":"success",
-//	  "data":[
-//	    {"pattern":"...","samples":[[1711839260,1],[1711839270,2]]}
-//	  ]
-//	}
 func HandleLokiPatterns(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+	ctx, span := traces.CreateSpan(context.Background(), "handle_patterns")
+	defer span.End()
+
 	// merged[pattern][timestamp] = count
 	merged := make(map[string]map[int64]int64)
 
 	for resp := range results {
 		if resp == nil || resp.Body == nil {
+			_, errSpan := traces.CreateSpan(ctx, "patterns.nil_response")
+			errSpan.RecordError(io.ErrUnexpectedEOF)
+			errSpan.SetStatus(codes.Error, "nil upstream response/body")
+			errSpan.End()
+
+			if metrics.RequestFailures != nil {
+				metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+					attribute.String("path", "/loki/api/v1/patterns"),
+					attribute.String("method", "GET"),
+					attribute.String("error_type", "nil_response"),
+				))
+			}
+
 			level.Warn(logger).Log("msg", "nil response or body received for patterns")
 			continue
 		}
+
 		func() {
 			defer resp.Body.Close()
 
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
+				_, errSpan := traces.CreateSpan(ctx, "patterns.read_body")
+				errSpan.RecordError(err)
+				errSpan.SetStatus(codes.Error, "failed to read response body")
+				errSpan.End()
+
+				if metrics.RequestFailures != nil {
+					metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+						attribute.String("path", "/loki/api/v1/patterns"),
+						attribute.String("method", "GET"),
+						attribute.String("error_type", "read_body_failed"),
+					))
+				}
+
 				level.Error(logger).Log("msg", "failed to read patterns response body", "err", err)
 				return
 			}
@@ -55,6 +82,19 @@ func HandleLokiPatterns(w http.ResponseWriter, results <-chan *http.Response, lo
 
 			var lr LokiPatternsResponse
 			if err := json.Unmarshal(body, &lr); err != nil {
+				_, errSpan := traces.CreateSpan(ctx, "patterns.unmarshal")
+				errSpan.RecordError(err)
+				errSpan.SetStatus(codes.Error, "failed to unmarshal patterns response")
+				errSpan.End()
+
+				if metrics.RequestFailures != nil {
+					metrics.RequestFailures.Add(ctx, 1, metric.WithAttributes(
+						attribute.String("path", "/loki/api/v1/patterns"),
+						attribute.String("method", "GET"),
+						attribute.String("error_type", "json_unmarshal_failed"),
+					))
+				}
+
 				level.Error(logger).Log("msg", "failed to unmarshal patterns response", "err", err)
 				return
 			}
@@ -105,7 +145,13 @@ func HandleLokiPatterns(w http.ResponseWriter, results <-chan *http.Response, lo
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
+	// Encode span so serialization errors are visible
+	_, encSpan := traces.CreateSpan(ctx, "patterns.encode_response")
 	if err := json.NewEncoder(w).Encode(final); err != nil {
+		encSpan.RecordError(err)
+		encSpan.SetStatus(codes.Error, "failed to encode final patterns response")
 		level.Error(logger).Log("msg", "failed to encode final patterns response", "err", err)
 	}
+	encSpan.End()
 }
