@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -26,11 +27,16 @@ import (
 
 // Varible to hold the API routes and their corresponding handlers
 var apiRoutes = map[string]func(http.ResponseWriter, <-chan *http.Response, log.Logger){
-	"/loki/api/v1/query":       handler.HandleLokiQueries,
-	"/loki/api/v1/query_range": handler.HandleLokiQueries,
-	"/loki/api/v1/series":      handler.HandleLokiSeries,
-	"/loki/api/v1/index/stats": handler.HandleLokiStats,
-	"/loki/api/v1/labels":      handler.HandleLokiLabels,
+	"/loki/api/v1/query":              handler.HandleLokiQueries,
+	"/loki/api/v1/query_range":        handler.HandleLokiQueries,
+	"/loki/api/v1/series":             handler.HandleLokiSeries,
+	"/loki/api/v1/index/stats":        handler.HandleLokiStats,
+	"/loki/api/v1/labels":             handler.HandleLokiLabels,
+	"/loki/api/v1/index/volume":       handler.HandleLokiVolume,
+	"/loki/api/v1/index/volume_range": handler.HandleLokiVolumeRange,
+	"/loki/api/v1/detected_labels":    handler.HandleLokiDetectedLabels,
+	"/loki/api/v1/patterns":           handler.HandleLokiPatterns,
+	"/loki/api/v1/detected_fields":    handler.HandleLokiDetectedFields,
 }
 
 // CustomRoundTripper intercepts the request and response
@@ -291,6 +297,11 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 	} else if strings.HasPrefix(path, "/loki/api/v1/label/") && strings.HasSuffix(path, "/values") {
 		span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
 		handler.HandleLokiLabels(w, results, logger)
+	} else if strings.HasPrefix(path, "/loki/api/v1/detected_field/") && strings.HasSuffix(path, "/values") {
+		span.SetAttributes(attribute.String("proxy.route_type", "detected_field_values"))
+		if fieldName, ok := extractDetectedFieldName(path); ok {
+			handler.HandleLokiDetectedFieldValues(w, results, fieldName, logger)
+		}
 	} else if strings.HasPrefix(path, "/loki/api/v1/tail") {
 		span.SetAttributes(attribute.String("proxy.route_type", "websocket"))
 		handler.HandleTailWebSocket(w, r, config, logger)
@@ -320,4 +331,26 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, 
 		}
 		resp.Body.Close()
 	}
+}
+
+// extractDetectedFieldName returns the {name} segment from
+// /loki/api/v1/detected_field/{name}/values, URL-decoded.
+func extractDetectedFieldName(path string) (string, bool) {
+	const prefix = "/loki/api/v1/detected_field/"
+	const suffix = "/values"
+
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return "", false
+	}
+	segment := path[len(prefix) : len(path)-len(suffix)]
+	if segment == "" {
+		return "", false
+	}
+	// {name} may be URL-encoded (e.g., foo%2Fbar)
+	name, err := url.PathUnescape(segment)
+	if err != nil {
+		// Fall back to raw segment on decode error
+		name = segment
+	}
+	return name, true
 }

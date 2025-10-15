@@ -26,7 +26,7 @@ We draw particular inspiration from **[Promxy](https://github.com/jacksontj/prom
 ## Requirements
 Before running **lokxy**, ensure the following are installed:
 
-- Go (v1.23+)
+- Go (v1.24+)
 - Docker (if running as a container)
 - Make (for running build scripts)
 
@@ -170,8 +170,14 @@ The following APIs are supported:
 * Querying Range: `/loki/api/v1/query_range`
 * Series API: `/loki/api/v1/series`
 * Index Stats API: `/loki/api/v1/index/stats`
+* Index Volume API: `/loki/api/v1/index/volume`
+* Index Volume Range API: `/loki/api/v1/index/volume`
+* Detected Labels API: `/loki/api/v1/detected_labels`
 * Labels API: `/loki/api/v1/labels`
 * Label Values API: `/loki/api/v1/label/{label_name}/values`
+* Detected Fields API: `/loki/api/v1/detected_fields`
+* Detected Field Valies API: `/loki/api/v1/detected_field/{field_name}/values`
+* Patterns API: `/loki/api/v1/patterns`
 * Tailing Logs via WebSocket: `/loki/api/v1/tail`
 
 ### Example Query:
