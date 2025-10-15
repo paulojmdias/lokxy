@@ -176,7 +176,7 @@ The following APIs are supported:
 * Labels API: `/loki/api/v1/labels`
 * Label Values API: `/loki/api/v1/label/{label_name}/values`
 * Detected Fields API: `/loki/api/v1/detected_fields`
-* Detected Field Valies API: `/loki/api/v1/detected_field/{field_name}/values`
+* Detected Field Values API: `/loki/api/v1/detected_field/{field_name}/values`
 * Patterns API: `/loki/api/v1/patterns`
 * Tailing Logs via WebSocket: `/loki/api/v1/tail`
 
