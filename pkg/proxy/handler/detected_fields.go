@@ -157,7 +157,7 @@ func HandleLokiDetectedFields(w http.ResponseWriter, results <-chan *http.Respon
 		var a detectedFieldsInA
 		if err := json.Unmarshal(body, &a); err == nil && (len(a.Fields) > 0 || a.Limit != nil) {
 			for _, f := range a.Fields {
-					addDetectedField(merged, f.Label, f.Type, f.Cardinality, f.Parsers)
+				addDetectedField(merged, f.Label, f.Type, f.Cardinality, f.Parsers)
 			}
 			// keep first non-nil limit
 			if limit == nil && a.Limit != nil {
