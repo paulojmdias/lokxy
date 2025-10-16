@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -85,8 +86,8 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	orig := apiRoutes
 	defer func() { apiRoutes = orig }()
 
-	apiRoutes = map[string]func(http.ResponseWriter, <-chan *http.Response, log.Logger){
-		"/loki/api/v1/labels": func(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
+		"/loki/api/v1/labels": func(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 			count := 0
 			for resp := range results {
 				count++

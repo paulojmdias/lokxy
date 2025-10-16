@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,7 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 )
 
-func HandleLokiLabels(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiLabels(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	mergedLabelValues := make(map[string]struct{})
 
 	for resp := range results {

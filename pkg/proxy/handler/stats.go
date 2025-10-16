@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,7 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 )
 
-func HandleLokiStats(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiStats(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	var totalStreams, totalChunks, totalBytes, totalEntries int
 
 	for resp := range results {

@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -26,7 +27,7 @@ import (
 )
 
 // Varible to hold the API routes and their corresponding handlers
-var apiRoutes = map[string]func(http.ResponseWriter, <-chan *http.Response, log.Logger){
+var apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
 	"/loki/api/v1/query":              handler.HandleLokiQueries,
 	"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 	"/loki/api/v1/series":             handler.HandleLokiSeries,
@@ -293,18 +294,18 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 
 	if handlerFunc, ok := apiRoutes[path]; ok {
 		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
-		handlerFunc(w, results, logger) // Call appropriate handler
+		handlerFunc(ctx, w, results, logger)
 	} else if strings.HasPrefix(path, "/loki/api/v1/label/") && strings.HasSuffix(path, "/values") {
 		span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
-		handler.HandleLokiLabels(w, results, logger)
+		handler.HandleLokiLabels(ctx, w, results, logger)
 	} else if strings.HasPrefix(path, "/loki/api/v1/detected_field/") && strings.HasSuffix(path, "/values") {
 		span.SetAttributes(attribute.String("proxy.route_type", "detected_field_values"))
 		if fieldName, ok := extractDetectedFieldName(path); ok {
-			handler.HandleLokiDetectedFieldValues(w, results, fieldName, logger)
+			handler.HandleLokiDetectedFieldValues(ctx, w, results, fieldName, logger)
 		}
 	} else if strings.HasPrefix(path, "/loki/api/v1/tail") {
 		span.SetAttributes(attribute.String("proxy.route_type", "websocket"))
-		handler.HandleTailWebSocket(w, r, config, logger)
+		handler.HandleTailWebSocket(ctx, w, r, config, logger)
 	} else {
 		span.SetAttributes(attribute.String("proxy.route_type", "first_response"))
 		level.Warn(logger).Log("msg", "No route matched, returning first response only")

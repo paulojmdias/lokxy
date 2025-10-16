@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -68,8 +69,7 @@ func createWebSocketDialer(instance cfg.ServerGroup, logger log.Logger) (*websoc
 }
 
 // Handle WebSocket connections for the Loki Tail API
-func HandleTailWebSocket(w http.ResponseWriter, r *http.Request, config *cfg.Config, logger log.Logger) {
-	ctx := r.Context()
+func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Request, config *cfg.Config, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "websocket_tail_handler")
 	defer span.End()
 
