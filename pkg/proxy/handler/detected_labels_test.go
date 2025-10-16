@@ -66,7 +66,7 @@ func TestHandleLokiDetectedLabels(t *testing.T) {
 			close(results)
 
 			w := httptest.NewRecorder()
-			HandleLokiDetectedLabels(w, results, logger)
+			HandleLokiDetectedLabels(t.Context(), w, results, logger)
 
 			var resp LokiDetectedLabelsResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -103,7 +103,7 @@ func TestHandleLokiDetectedLabelsWithMerging(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiDetectedLabels(w, results, logger)
+	HandleLokiDetectedLabels(t.Context(), w, results, logger)
 
 	var resp LokiDetectedLabelsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -124,7 +124,7 @@ func TestHandleLokiDetectedLabelsWithInvalidJSON(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiDetectedLabels(w, results, logger)
+	HandleLokiDetectedLabels(t.Context(), w, results, logger)
 
 	var resp LokiDetectedLabelsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -144,7 +144,7 @@ func TestHandleLokiDetectedLabelsResponseReaderError(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiDetectedLabels(w, results, logger)
+	HandleLokiDetectedLabels(t.Context(), w, results, logger)
 
 	var out LokiDetectedLabelsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
