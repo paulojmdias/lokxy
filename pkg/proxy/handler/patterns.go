@@ -30,8 +30,8 @@ type LokiPatternsResponse struct {
 }
 
 // HandleLokiPatterns aggregates /patterns responses from multiple Loki instances.
-func HandleLokiPatterns(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
-	ctx, span := traces.CreateSpan(context.Background(), "handle_patterns")
+func HandleLokiPatterns(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+	ctx, span := traces.CreateSpan(ctx, "handle_patterns")
 	defer span.End()
 
 	// merged[pattern][timestamp] = count
