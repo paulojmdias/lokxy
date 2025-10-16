@@ -109,8 +109,8 @@ func addDetectedField(merged map[string]*dfAcc, label, typ string, cardinality i
 
 // HandleLokiDetectedFields aggregates detected fields from multiple Loki instances.
 // Accepts both "fields" and "detectedFields" input envelopes and emits the "fields" envelope.
-func HandleLokiDetectedFields(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
-	ctx, span := traces.CreateSpan(context.Background(), "handle_detected_fields")
+func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+	ctx, span := traces.CreateSpan(ctx, "handle_detected_fields")
 	defer span.End()
 
 	// merged[label] => accumulator
@@ -213,8 +213,8 @@ func HandleLokiDetectedFields(w http.ResponseWriter, results <-chan *http.Respon
 
 // HandleLokiDetectedFieldValues aggregates values for a given detected field.
 // Accepts upstream envelopes using either "field" or "label" as the name key.
-func HandleLokiDetectedFieldValues(w http.ResponseWriter, results <-chan *http.Response, fieldName string, logger log.Logger) {
-	ctx, span := traces.CreateSpan(context.Background(), "handle_detected_field_values")
+func HandleLokiDetectedFieldValues(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, fieldName string, logger log.Logger) {
+	ctx, span := traces.CreateSpan(ctx, "handle_detected_field_values")
 	defer span.End()
 
 	merged := make(map[string]int)
