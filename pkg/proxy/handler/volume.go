@@ -44,8 +44,8 @@ type Volume struct {
 }
 
 // HandleLokiVolume aggregates volume data from multiple Loki instances
-func HandleLokiVolume(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
-	ctx, span := traces.CreateSpan(context.Background(), "handle_volume")
+func HandleLokiVolume(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+	ctx, span := traces.CreateSpan(ctx, "handle_volume")
 	defer span.End()
 
 	var mergedVolumes []Volume
@@ -169,8 +169,8 @@ func HandleLokiVolume(w http.ResponseWriter, results <-chan *http.Response, logg
 }
 
 // HandleLokiVolumeRange handles the volume_range endpoint
-func HandleLokiVolumeRange(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
-	ctx, span := traces.CreateSpan(context.Background(), "handle_volume_range")
+func HandleLokiVolumeRange(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+	ctx, span := traces.CreateSpan(ctx, "handle_volume_range")
 	defer span.End()
 
 	// Volume range always returns matrix format
