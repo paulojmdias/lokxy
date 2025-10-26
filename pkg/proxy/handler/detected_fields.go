@@ -272,7 +272,7 @@ func HandleLokiDetectedFieldValues(ctx context.Context, w http.ResponseWriter, r
 			continue
 		}
 
-		// NOTE: We ignore in.Field/Label for the name; we trust the router param (fieldName).
+		// NOTE: We ignore in.Field/Label for the name as we rely on the fieldName input
 		for _, v := range in.Values {
 			merged[v.Value] += v.Count
 		}
@@ -284,6 +284,7 @@ func HandleLokiDetectedFieldValues(ctx context.Context, w http.ResponseWriter, r
 	}
 	sort.Slice(final, func(i, j int) bool { return final[i].Value < final[j].Value })
 
+	// Use the field name from the URL/router (fieldName) for the output
 	resp := LokiDetectedFieldValuesResponse{Field: fieldName, Values: final}
 	w.Header().Set("Content-Type", "application/json")
 
