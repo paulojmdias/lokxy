@@ -207,11 +207,13 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
 
 			// Record the request
-			metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
-				attribute.String("path", r.URL.Path),
-				attribute.String("method", r.Method),
-				attribute.String("instance", instance.Name),
-			))
+			if metrics.RequestCount != nil {
+				metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
+					attribute.String("path", r.URL.Path),
+					attribute.String("method", r.Method),
+					attribute.String("instance", instance.Name),
+				))
+			}
 
 			req := requestPool.Get().(*http.Request)
 			defer requestPool.Put(req)
@@ -221,11 +223,13 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 				requestSpan.RecordError(err)
 				requestSpan.SetStatus(codes.Error, "Failed to create request")
 				// Record error count
-				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
-					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
-				))
+				if metrics.RequestFailures != nil {
+					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
+						attribute.String("path", r.URL.Path),
+						attribute.String("method", r.Method),
+						attribute.String("instance", instance.Name),
+					))
+				}
 				level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
 				select {
 				case errors <- err:
@@ -253,11 +257,13 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 				requestSpan.RecordError(err)
 				requestSpan.SetStatus(codes.Error, "Error querying Loki instance")
 				// Record error count
-				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
-					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
-				))
+				if metrics.RequestFailures != nil {
+					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
+						attribute.String("path", r.URL.Path),
+						attribute.String("method", r.Method),
+						attribute.String("instance", instance.Name),
+					))
+				}
 				level.Error(logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
 				errors <- err
 				return
@@ -270,13 +276,15 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			)
 
 			// Measure response time
-			metrics.RequestDuration.Record(upstreamCtx, time.Since(startTime).Seconds(),
-				metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
-					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
-				),
-			)
+			if metrics.RequestDuration != nil {
+				metrics.RequestDuration.Record(upstreamCtx, time.Since(startTime).Seconds(),
+					metric.WithAttributes(
+						attribute.String("path", r.URL.Path),
+						attribute.String("method", r.Method),
+						attribute.String("instance", instance.Name),
+					),
+				)
+			}
 
 			select {
 			case results <- resp:

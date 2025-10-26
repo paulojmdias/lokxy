@@ -30,15 +30,15 @@ func mkGzip(body []byte) []byte {
 }
 
 func mkUpstreamServer(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
-	t.Helper()
 	mux := http.NewServeMux()
 	for p, h := range routes {
+		// Register the given path
 		mux.HandleFunc(p, h)
+		// Also register decoded variant if different
+		if dec, err := url.PathUnescape(p); err == nil && dec != p {
+			mux.HandleFunc(dec, h)
+		}
 	}
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"default":true}`)
-	})
 	return httptest.NewServer(mux)
 }
 
