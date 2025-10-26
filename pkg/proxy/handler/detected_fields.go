@@ -79,23 +79,23 @@ type detectedFieldValuesIn struct {
 	} `json:"values"`
 }
 
-// dfAcc accumulates cardinality, first non-empty type, and a set of parsers.
-type dfAcc struct {
-	card int
+// fieldAgg accumulates cardinality, first non-empty type, and a set of parsers.
+type fieldAgg struct {
+	cardinality int
 	typ  string
 	pset map[string]struct{}
 }
 
-func addDetectedField(merged map[string]*dfAcc, label, typ string, cardinality int, parsers []string) {
+func addDetectedField(merged map[string]*fieldAgg, label, typ string, cardinality int, parsers []string) {
 	if label == "" {
 		return
 	}
 	m, ok := merged[label]
 	if !ok {
-		m = &dfAcc{pset: make(map[string]struct{})}
+		m = &fieldAgg{pset: make(map[string]struct{})}
 		merged[label] = m
 	}
-	m.card += cardinality
+	m.cardinality += cardinality
 	if m.typ == "" && typ != "" {
 		m.typ = typ
 	}
@@ -114,7 +114,7 @@ func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, result
 	defer span.End()
 
 	// merged[label] => accumulator
-	merged := make(map[string]*dfAcc)
+	merged := make(map[string]*fieldAgg)
 	var limit *int // keep the first non-nil limit we see
 
 	for resp := range results {
@@ -155,7 +155,7 @@ func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, result
 
 		// Try variant A first
 		var a detectedFieldsInA
-		if err := json.Unmarshal(body, &a); err == nil && (len(a.Fields) > 0 || a.Limit != nil) {
+		if json.Unmarshal(body, &a) == nil && (a.Fields != nil || a.Limit != nil) {
 			for _, f := range a.Fields {
 				addDetectedField(merged, f.Label, f.Type, f.Cardinality, f.Parsers)
 			}
@@ -168,7 +168,7 @@ func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, result
 
 		// Try variant B
 		var b detectedFieldsInB
-		if err := json.Unmarshal(body, &b); err == nil && len(b.DetectedFields) > 0 {
+		if json.Unmarshal(body, &b) == nil && b.DetectedFields != nil {
 			for _, f := range b.DetectedFields {
 				label := f.Label
 				if label == "" {
@@ -193,7 +193,7 @@ func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, result
 		out = append(out, DetectedFieldOut{
 			Label:       label,
 			Type:        a.typ,
-			Cardinality: a.card,
+			Cardinality: a.cardinality,
 			Parsers:     parsers,
 		})
 	}
