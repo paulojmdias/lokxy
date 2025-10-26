@@ -80,8 +80,8 @@ func HandleLokiPatterns(ctx context.Context, w http.ResponseWriter, results <-ch
 
 			level.Debug(logger).Log("msg", "received body for patterns", "body", string(body))
 
-			var lr LokiPatternsResponse
-			if err := json.Unmarshal(body, &lr); err != nil {
+			var patternsResp LokiPatternsResponse
+			if err := json.Unmarshal(body, &patternsResp); err != nil {
 				_, errSpan := traces.CreateSpan(ctx, "patterns.unmarshal")
 				errSpan.RecordError(err)
 				errSpan.SetStatus(codes.Error, "failed to unmarshal patterns response")
@@ -99,7 +99,7 @@ func HandleLokiPatterns(ctx context.Context, w http.ResponseWriter, results <-ch
 				return
 			}
 
-			for _, entry := range lr.Data {
+			for _, entry := range patternsResp.Data {
 				if _, ok := merged[entry.Pattern]; !ok {
 					merged[entry.Pattern] = make(map[int64]int64)
 				}
