@@ -13,10 +13,9 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	cfg "github.com/paulojmdias/lokxy/pkg/config"
 )
 
 // ---------- helpers ----------
@@ -30,6 +29,7 @@ func mkGzip(body []byte) []byte {
 }
 
 func mkUpstreamServer(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
+	t.Helper()
 	mux := http.NewServeMux()
 	for p, h := range routes {
 		// Register the given path
@@ -68,7 +68,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	logger := log.NewNopLogger()
 
 	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
-		"/loki/api/v1/labels": func(w http.ResponseWriter, r *http.Request) {
+		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"labels":["a","b"]}`)
 		},
@@ -76,7 +76,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	defer s1.Close()
 
 	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
-		"/loki/api/v1/labels": func(w http.ResponseWriter, r *http.Request) {
+		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"labels":["c"]}`)
 		},
@@ -87,7 +87,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	defer func() { apiRoutes = orig }()
 
 	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
-		"/loki/api/v1/labels": func(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+		"/loki/api/v1/labels": func(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, _ log.Logger) {
 			count := 0
 			for resp := range results {
 				count++
@@ -108,7 +108,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
-	assert.Equal(t, float64(2), got["instances"])
+	assert.InDelta(t, 2.0, got["instances"], 1e-9)
 }
 
 func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
@@ -117,7 +117,7 @@ func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
 	upPath := "/loki/api/v1/detected_field/" + encoded + "/values"
 
 	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
-		upPath: func(w http.ResponseWriter, r *http.Request) {
+		upPath: func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"field":"ignored","values":[{"value":"X","count":1},{"value":"Y","count":2}]}`)
 		},
@@ -125,7 +125,7 @@ func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
 	defer s1.Close()
 
 	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
-		upPath: func(w http.ResponseWriter, r *http.Request) {
+		upPath: func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"field":"ignored","values":[{"value":"X","count":3}]}`)
 		},
@@ -168,7 +168,7 @@ func TestProxy_UnknownPath_ForwardsFirstResponseWithGzipBody(t *testing.T) {
 	gz := mkGzip(plain)
 
 	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
-		"/unknown": func(w http.ResponseWriter, r *http.Request) {
+		"/unknown": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Content-Encoding", "gzip")
 			w.WriteHeader(http.StatusOK)
