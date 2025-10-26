@@ -209,3 +209,153 @@ func Test_extractDetectedFieldName(t *testing.T) {
 		assert.False(t, ok)
 	}
 }
+
+func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var got1, got2 string
+	up := "/loki/api/v1/query"
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		up: func(w http.ResponseWriter, r *http.Request) {
+			defer r.Body.Close()
+			b, _ := io.ReadAll(r.Body)
+			got1 = string(b)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		},
+	})
+	defer s1.Close()
+	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		up: func(w http.ResponseWriter, r *http.Request) {
+			defer r.Body.Close()
+			b, _ := io.ReadAll(r.Body)
+			got2 = string(b)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		},
+	})
+	defer s2.Close()
+
+	config := mkConfig(s1.URL, s2.URL)
+
+	rr := httptest.NewRecorder()
+	body := bytes.NewBufferString(`query={app="lokxy"}`)
+	req := httptest.NewRequest(http.MethodPost, up, body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	ProxyHandler(rr, req, config, logger)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	assert.Equal(t, `query={app="lokxy"}`, got1)
+	assert.Equal(t, `query={app="lokxy"}`, got2)
+}
+
+func TestProxy_UpstreamHeadersInjected(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var seen string
+	up := "/loki/api/v1/labels"
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		up: func(w http.ResponseWriter, r *http.Request) {
+			seen = r.Header.Get("X-Lokxy")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"labels":[]}`))
+		},
+	})
+	defer s1.Close()
+
+	cfg := mkConfig(s1.URL)
+	// override to prove it’s our injection (not client header).
+	cfg.ServerGroups[0].Headers["X-Lokxy"] = "from-config"
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, up, nil)
+	req.Header.Set("X-Lokxy", "from-client") // should be overwritten by config
+
+	ProxyHandler(rr, req, cfg, logger)
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "from-config", seen)
+}
+
+func TestProxy_DetectedFieldValues_PartialUpstreamFailure(t *testing.T) {
+	logger := log.NewNopLogger()
+	encoded := url.PathEscape("foo")
+	upPath := "/loki/api/v1/detected_field/" + encoded + "/values"
+
+	// Healthy upstream
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		upPath: func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"field":"ignored","values":[{"value":"X","count":2}]}`)
+		},
+	})
+	defer s1.Close()
+
+	// Broken upstream
+	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		upPath: func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, `oops`)
+		},
+	})
+	defer s2.Close()
+
+	config := mkConfig(s1.URL, s2.URL)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_field/"+encoded+"/values", nil)
+
+	ProxyHandler(rr, req, config, logger)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var out struct {
+		Field  string `json:"field"`
+		Values []struct {
+			Value string `json:"value"`
+			Count int    `json:"count"`
+		} `json:"values"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
+	assert.Equal(t, "foo", out.Field)
+
+	got := map[string]int{}
+	for _, v := range out.Values {
+		got[v.Value] = v.Count
+	}
+	assert.Equal(t, 2, got["X"])
+}
+
+func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	orig := apiRoutes
+	defer func() { apiRoutes = orig }()
+
+	called := 0
+	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
+		"/loki/api/v1/series": func(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, _ log.Logger) {
+			for resp := range results {
+				resp.Body.Close()
+			}
+			called++
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		},
+	}
+
+	// upstream presence isn’t needed; handler ignores result bodies.
+	s := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/series": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"status":"success","data":[]}`)
+		},
+	})
+	defer s.Close()
+
+	cfg := mkConfig(s.URL)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series", nil)
+
+	ProxyHandler(rr, req, cfg, logger)
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, 1, called)
+}
