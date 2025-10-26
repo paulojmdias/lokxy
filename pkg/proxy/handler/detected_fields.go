@@ -82,8 +82,8 @@ type detectedFieldValuesIn struct {
 // fieldAgg accumulates cardinality, first non-empty type, and a set of parsers.
 type fieldAgg struct {
 	cardinality int
-	typ  string
-	pset map[string]struct{}
+	typ         string
+	pset        map[string]struct{}
 }
 
 func addDetectedField(merged map[string]*fieldAgg, label, typ string, cardinality int, parsers []string) {
