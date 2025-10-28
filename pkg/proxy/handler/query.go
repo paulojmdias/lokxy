@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 )
 
 // Handle Loki query and query_range responses
-func HandleLokiQueries(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
 	var mergedVector loghttp.Vector

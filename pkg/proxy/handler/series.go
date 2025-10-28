@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,7 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 )
 
-func HandleLokiSeries(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiSeries(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
 	var mergedSeries []map[string]string // Assuming series is a map of labels
 
 	for resp := range results {

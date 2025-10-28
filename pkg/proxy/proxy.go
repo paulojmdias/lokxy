@@ -3,11 +3,13 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -25,12 +27,17 @@ import (
 )
 
 // Varible to hold the API routes and their corresponding handlers
-var apiRoutes = map[string]func(http.ResponseWriter, <-chan *http.Response, log.Logger){
-	"/loki/api/v1/query":       handler.HandleLokiQueries,
-	"/loki/api/v1/query_range": handler.HandleLokiQueries,
-	"/loki/api/v1/series":      handler.HandleLokiSeries,
-	"/loki/api/v1/index/stats": handler.HandleLokiStats,
-	"/loki/api/v1/labels":      handler.HandleLokiLabels,
+var apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
+	"/loki/api/v1/query":              handler.HandleLokiQueries,
+	"/loki/api/v1/query_range":        handler.HandleLokiQueries,
+	"/loki/api/v1/series":             handler.HandleLokiSeries,
+	"/loki/api/v1/index/stats":        handler.HandleLokiStats,
+	"/loki/api/v1/labels":             handler.HandleLokiLabels,
+	"/loki/api/v1/index/volume":       handler.HandleLokiVolume,
+	"/loki/api/v1/index/volume_range": handler.HandleLokiVolumeRange,
+	"/loki/api/v1/detected_labels":    handler.HandleLokiDetectedLabels,
+	"/loki/api/v1/patterns":           handler.HandleLokiPatterns,
+	"/loki/api/v1/detected_fields":    handler.HandleLokiDetectedFields,
 }
 
 // CustomRoundTripper intercepts the request and response
@@ -200,11 +207,13 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
 
 			// Record the request
-			metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
-				attribute.String("path", r.URL.Path),
-				attribute.String("method", r.Method),
-				attribute.String("instance", instance.Name),
-			))
+			if metrics.RequestCount != nil {
+				metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
+					attribute.String("path", r.URL.Path),
+					attribute.String("method", r.Method),
+					attribute.String("instance", instance.Name),
+				))
+			}
 
 			req := requestPool.Get().(*http.Request)
 			defer requestPool.Put(req)
@@ -214,11 +223,13 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 				requestSpan.RecordError(err)
 				requestSpan.SetStatus(codes.Error, "Failed to create request")
 				// Record error count
-				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
-					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
-				))
+				if metrics.RequestFailures != nil {
+					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
+						attribute.String("path", r.URL.Path),
+						attribute.String("method", r.Method),
+						attribute.String("instance", instance.Name),
+					))
+				}
 				level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
 				select {
 				case errors <- err:
@@ -246,11 +257,13 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 				requestSpan.RecordError(err)
 				requestSpan.SetStatus(codes.Error, "Error querying Loki instance")
 				// Record error count
-				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
-					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
-				))
+				if metrics.RequestFailures != nil {
+					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
+						attribute.String("path", r.URL.Path),
+						attribute.String("method", r.Method),
+						attribute.String("instance", instance.Name),
+					))
+				}
 				level.Error(logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
 				errors <- err
 				return
@@ -263,13 +276,15 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 			)
 
 			// Measure response time
-			metrics.RequestDuration.Record(upstreamCtx, time.Since(startTime).Seconds(),
-				metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
-					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
-				),
-			)
+			if metrics.RequestDuration != nil {
+				metrics.RequestDuration.Record(upstreamCtx, time.Since(startTime).Seconds(),
+					metric.WithAttributes(
+						attribute.String("path", r.URL.Path),
+						attribute.String("method", r.Method),
+						attribute.String("instance", instance.Name),
+					),
+				)
+			}
 
 			select {
 			case results <- resp:
@@ -287,13 +302,18 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 
 	if handlerFunc, ok := apiRoutes[path]; ok {
 		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
-		handlerFunc(w, results, logger) // Call appropriate handler
+		handlerFunc(ctx, w, results, logger)
 	} else if strings.HasPrefix(path, "/loki/api/v1/label/") && strings.HasSuffix(path, "/values") {
 		span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
-		handler.HandleLokiLabels(w, results, logger)
+		handler.HandleLokiLabels(ctx, w, results, logger)
+	} else if strings.HasPrefix(path, "/loki/api/v1/detected_field/") && strings.HasSuffix(path, "/values") {
+		span.SetAttributes(attribute.String("proxy.route_type", "detected_field_values"))
+		if fieldName, ok := extractDetectedFieldName(path); ok {
+			handler.HandleLokiDetectedFieldValues(ctx, w, results, fieldName, logger)
+		}
 	} else if strings.HasPrefix(path, "/loki/api/v1/tail") {
 		span.SetAttributes(attribute.String("proxy.route_type", "websocket"))
-		handler.HandleTailWebSocket(w, r, config, logger)
+		handler.HandleTailWebSocket(ctx, w, r, config, logger)
 	} else {
 		span.SetAttributes(attribute.String("proxy.route_type", "first_response"))
 		level.Warn(logger).Log("msg", "No route matched, returning first response only")
@@ -320,4 +340,26 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, 
 		}
 		resp.Body.Close()
 	}
+}
+
+// extractDetectedFieldName returns the {name} segment from
+// /loki/api/v1/detected_field/{name}/values, URL-decoded.
+func extractDetectedFieldName(path string) (string, bool) {
+	const prefix = "/loki/api/v1/detected_field/"
+	const suffix = "/values"
+
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return "", false
+	}
+	segment := path[len(prefix) : len(path)-len(suffix)]
+	if segment == "" {
+		return "", false
+	}
+	// {name} may be URL-encoded (e.g., foo%2Fbar)
+	name, err := url.PathUnescape(segment)
+	if err != nil {
+		// Fall back to raw segment on decode error
+		name = segment
+	}
+	return name, true
 }
