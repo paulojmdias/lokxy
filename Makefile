@@ -69,6 +69,5 @@ tag:
 	fi
 
 	# Create annotated tag and push it
-	@git commit --allow-empty -m "chore: release $(TAG)"
-	@git tag -a $(TAG) -m "chore(release): $(TAG)"
+	@git tag -s $(TAG) -m "chore(release): $(TAG)" HEAD
 	@git push origin $(TAG)
