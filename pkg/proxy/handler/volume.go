@@ -110,8 +110,9 @@ func HandleLokiVolume(ctx context.Context, w http.ResponseWriter, results <-chan
 			metricKey := createMetricKey(volume.Metric)
 
 			if existingVolume, exists := volumeMap[metricKey]; exists {
+				switch volumeResponse.Data.ResultType {
 				// Aggregate values - sum volume data
-				if volumeResponse.Data.ResultType == resultTypeVector {
+				case resultTypeVector:
 					// For vector responses, sum the values
 					if len(volume.Value) >= 2 && len(existingVolume.Value) >= 2 {
 						existingValue := parseVolumeValue(existingVolume.Value[1])
@@ -119,7 +120,7 @@ func HandleLokiVolume(ctx context.Context, w http.ResponseWriter, results <-chan
 						summedValue := existingValue + newValue
 						existingVolume.Value[1] = strconv.FormatInt(summedValue, 10)
 					}
-				} else if volumeResponse.Data.ResultType == resultTypeMatrix {
+				case resultTypeMatrix:
 					// For matrix responses, merge the values arrays
 					existingVolume.Values = mergeMatrixValues(existingVolume.Values, volume.Values)
 				}

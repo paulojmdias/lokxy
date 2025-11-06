@@ -1,65 +1,68 @@
+version: "2"
 run:
-  # define go version
-  go: "1.24"
-
-  # timeout for analysis, e.g. 30s, 5m, default is 1m
-  timeout: 10m
-
-  # exit code when at least one issue was found, default is 1
   issues-exit-code: 1
-
-  # include test files or not, default is true
   tests: true
-
-# output configuration options
 output:
   formats:
-    # colored-line-number|line-number|json|tab|checkstyle, default is "colored-line-number"
-    - format: colored-line-number
-
-  # print lines of code with issue, default is true
-  print-issued-lines: true
-
-  # print linter name in the end of issue text, default is true
-  print-linter-name: true
-
-linters-settings:
-  depguard:
-    rules:
-      Main:
-        deny:
-          - desc: "Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
-            pkg: github.com/go-kit/kit/log
-
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
 linters:
   enable:
     - copyloopvar
     - depguard
-    - errcheck
-    - gci
-    - goconst
-    - gofmt
     - gochecksumtype
-    - gosimple
+    - goconst
     - govet
+    - errcheck
     - ineffassign
+    - intrange
     - misspell
     - revive
     - staticcheck
     - testifylint
-    - typecheck
     - unconvert
-  disable:
     - unused
+  disable:
     - unparam
-
-issues:
-  exclude:
-    - Error return value of .*log\.Logger\)\.Log\x60 is not checked
-    - defers in this range loop won't run unless the channel gets closed
-    - func name will be used as proxy.ProxyHandler by other packages, and that stutters; consider calling this Handler
-    - ineffectual assignment to dialTimeout
-  exclude-rules:
-    - path: '(.+)_test\.go'
-      linters:
-        - errcheck
+  settings:
+    depguard:
+      rules:
+        Main:
+          deny:
+            - pkg: github.com/go-kit/kit/log
+              desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+        path: (.+)_test\.go
+      - path: (.+)\.go$
+        text: Error return value of .*log\.Logger\)\.Log\x60 is not checked
+      - path: (.+)\.go$
+        text: defers in this range loop won't run unless the channel gets closed
+      - path: (.+)\.go$
+        text: func name will be used as proxy.ProxyHandler by other packages, and that stutters; consider calling this Handler
+      - path: (.+)\.go$
+        text: ineffectual assignment to dialTimeout
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
