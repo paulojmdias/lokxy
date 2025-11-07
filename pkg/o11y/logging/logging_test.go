@@ -47,11 +47,12 @@ func TestConfigureLogger(t *testing.T) {
 
 			// Check logger format
 			// Note: This is a simplified check. In a real-world scenario, you might need to capture and parse log output.
-			if tt.config.Format == "json" {
+			switch tt.config.Format {
+			case "json":
 				if _, ok := any(logger).(log.Logger); !ok {
 					t.Errorf("Expected logger to be in json format, got %T", logger)
 				}
-			} else if tt.config.Format == "logfmt" {
+			case "logfmt":
 				if _, ok := any(logger).(log.Logger); !ok {
 					t.Errorf("Expected logger to be in logfmt format, got %T", logger)
 				}

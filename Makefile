@@ -2,6 +2,7 @@ BUILD := build
 CONTAINER_ENGINE := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 GO ?= go
 GOFILES := $(shell find . -name "*.go" -type f ! -path "./vendor/*")
+GOLANGCI_LINT_VERSION:=v2.6.1
 GOLANGCI_LINT ?= golangci-lint
 VERSION := $(shell git describe --tags --abbrev=0)
 REVISION := $(shell git rev-parse --short HEAD)
@@ -27,6 +28,10 @@ run:
 		-ldflags="-X main.Version=$(VERSION) \
 	  			  -X main.Revision=$(REVISION)" \
 		cmd/main.go
+
+.PHONY: lint-install
+lint-install:
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 .PHONY: lint
 lint:
