@@ -121,12 +121,6 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 }
 
 func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWriter, *http.Request) {
-	requestPool := sync.Pool{
-		New: func() any {
-			return new(http.Request)
-		},
-	}
-
 	clients := make(map[string]*http.Client)
 	for _, instance := range config.ServerGroups {
 		client, err := createHTTPClient(instance, logger)
@@ -214,9 +208,6 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 						attribute.String("instance", instance.Name),
 					))
 				}
-
-				req := requestPool.Get().(*http.Request)
-				defer requestPool.Put(req)
 
 				req, err := http.NewRequestWithContext(upstreamCtx, r.Method, targetURL, bodyReader())
 				if err != nil {
