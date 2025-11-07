@@ -2,10 +2,10 @@ receivers:
   prometheus:
     config:
       scrape_configs:
-        - job_name: 'lokxy'
+        - job_name: "lokxy"
           scrape_interval: 15s
           static_configs:
-            - targets: ['lokxy:9091']
+            - targets: ["lokxy:9091"]
   otlp:
     protocols:
       grpc:
@@ -15,7 +15,11 @@ receivers:
 
 exporters:
   debug:
-    verbosity: detailed
+    verbosity: normal
+  otlp:
+    endpoint: http://tempo:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -24,4 +28,4 @@ service:
       exporters: [debug]
     traces:
       receivers: [otlp]
-      exporters: [debug]
+      exporters: [otlp]

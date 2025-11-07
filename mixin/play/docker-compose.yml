@@ -116,3 +116,14 @@ services:
       - "8888:8888"
     networks:
       - play
+
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./grafana/tempo.yaml:/etc/tempo.yaml
+    ports:
+      - "3200"
+      - "4317"
+    networks:
+      - play
