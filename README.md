@@ -26,7 +26,7 @@ We draw particular inspiration from **[Promxy](https://github.com/jacksontj/prom
 ## Requirements
 Before running **lokxy**, ensure the following are installed:
 
-- Go (v1.24+)
+- Go (v1.25+)
 - Docker (if running as a container)
 - Make (for running build scripts)
 
