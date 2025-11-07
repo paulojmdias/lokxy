@@ -108,9 +108,7 @@ server_groups:
 	})
 
 	// Register the proxy handler
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		proxy.ProxyHandler(w, r, cfg, logger)
-	})
+	http.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
 
 	go func() {
 		if err := proxyServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
