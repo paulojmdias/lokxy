@@ -3,17 +3,19 @@
   "language": "en",
   "words": [
     "artifacthub",
-    "Barroso", 
+    "Barroso",
     "golangci",
     "goroutines",
+    "headblock",
     "Hélia",
     "hostnames",
+    "ingester",
     "loki",
     "Lokxy",
     "lokxy",
     "logfmt",
     "mingrammer",
-    "myapp", 
+    "myapp",
     "mysecret",
     "nindent",
     "promtail",
@@ -26,3 +28,4 @@
     "Zipkin"
   ]
 }
+
