@@ -3,7 +3,6 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/go-kit/log"
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
-	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,7 +69,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
 		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"labels":["a","b"]}`)
+			io.WriteString(w, `{"status": "success", "data":["a", "b"]}`)
 		},
 	})
 	defer s1.Close()
@@ -79,37 +77,24 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
 		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"labels":["c"]}`)
+			io.WriteString(w, `{"status": "success", "data":["c", "b"]}`)
 		},
 	})
 	defer s2.Close()
-
-	orig := apiRoutes
-	defer func() { apiRoutes = orig }()
-
-	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, log.Logger){
-		"/loki/api/v1/labels": func(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ log.Logger) {
-			count := 0
-			for backendResp := range results {
-				count++
-				_ = backendResp.Response.Body.Close()
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"instances": count})
-		},
-	}
 
 	config := mkConfig(s1.URL, s2.URL)
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
-	ProxyHandler(config, logger)(rr, req)
+
+	NewServeMux(logger, config).ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
-	require.InDelta(t, 2.0, got["instances"], 1e-9)
+	require.Equal(t, "success", got["status"])
+	require.ElementsMatch(t, []any{"a", "b", "c"}, got["data"])
 }
 
 func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
@@ -141,7 +126,7 @@ func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
 	q.Set("query", `{app="lokxy"}`)
 	req.URL.RawQuery = q.Encode()
 
-	ProxyHandler(config, logger)(rr, req)
+	NewServeMux(logger, config).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var out struct {
@@ -182,33 +167,9 @@ func TestProxy_UnknownPath_ForwardsFirstResponseWithGzipBody(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
 
-	ProxyHandler(config, logger)(rr, req)
+	NewServeMux(logger, config).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.JSONEq(t, string(plain), rr.Body.String())
-}
-
-func Test_extractDetectedFieldName(t *testing.T) {
-	okCases := map[string]string{
-		"/loki/api/v1/detected_field/job/values":                  "job",
-		"/loki/api/v1/detected_field/foo%2Fbar/values":            "foo/bar",
-		"/loki/api/v1/detected_field/%5Bcomplex%5D%20name/values": "[complex] name",
-	}
-	for in, want := range okCases {
-		got, ok := extractDetectedFieldName(in)
-		require.True(t, ok)
-		require.Equal(t, want, got)
-	}
-
-	bad := []string{
-		"/loki/api/v1/detected_field",
-		"/loki/api/v1/detected_field/job",
-		"/loki/api/v1/detected_field//values",
-		"/loki/api/v1/detected_field/job/values/extra",
-	}
-	for _, in := range bad {
-		_, ok := extractDetectedFieldName(in)
-		require.False(t, ok)
-	}
 }
 
 func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
@@ -244,7 +205,7 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, up, body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	ProxyHandler(config, logger)(rr, req)
+	NewServeMux(logger, config).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	require.Equal(t, `query={app="lokxy"}`, got1)
@@ -273,7 +234,7 @@ func TestProxy_UpstreamHeadersInjected(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, up, nil)
 	req.Header.Set("X-Lokxy", "from-client") // should be overwritten by config
 
-	ProxyHandler(cfg, logger)(rr, req)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Equal(t, "from-config", seen)
 }
@@ -298,7 +259,7 @@ func TestProxy_DetectedFieldValues_UpstreamFailure(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_field/"+encoded+"/values", nil)
 
-	ProxyHandler(config, logger)(rr, req)
+	NewServeMux(logger, config).ServeHTTP(rr, req)
 
 	// Should return error when backend fails (fail-fast behavior)
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -309,21 +270,6 @@ func TestProxy_DetectedFieldValues_UpstreamFailure(t *testing.T) {
 
 func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 	logger := log.NewNopLogger()
-
-	orig := apiRoutes
-	defer func() { apiRoutes = orig }()
-
-	called := 0
-	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, log.Logger){
-		"/loki/api/v1/series": func(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ log.Logger) {
-			for backendResp := range results {
-				backendResp.Response.Body.Close()
-			}
-			called++
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-		},
-	}
 
 	// upstream presence isn’t needed; handler ignores result bodies.
 	s := mkUpstreamServer(t, map[string]http.HandlerFunc{
@@ -338,9 +284,12 @@ func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series", nil)
 
-	ProxyHandler(cfg, logger)(rr, req)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
-	require.Equal(t, 1, called)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+	require.Equal(t, "success", got["status"])
 }
 
 func TestProxy_AllBackendsFailWithError(t *testing.T) {
@@ -368,7 +317,7 @@ func TestProxy_AllBackendsFailWithError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query?query={}", nil)
 
-	ProxyHandler(cfg, logger)(rr, req)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
 
 	// Should return error status from first backend
 	require.Equal(t, http.StatusBadRequest, rr.Code)
@@ -404,7 +353,7 @@ func TestProxy_AnyBackendFailure_ReturnsError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 
-	ProxyHandler(cfg, logger)(rr, req)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
 
 	// Should return error when backend fails
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -421,7 +370,7 @@ func TestProxy_UnreachableBackend_ReturnsConnectionError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 
-	ProxyHandler(cfg, logger)(rr, req)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
 
 	// Should return 502 Bad Gateway for connection errors
 	require.Equal(t, http.StatusBadGateway, rr.Code)
@@ -442,7 +391,7 @@ func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 	// Use a path that falls through to forwardFirstResponse
 	req := httptest.NewRequest(http.MethodGet, "/some/unknown/path", nil)
 
-	ProxyHandler(cfg, logger)(rr, req)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
 
 	// Should return 502 Bad Gateway when no upstreams respond
 	require.Equal(t, http.StatusBadGateway, rr.Code)
