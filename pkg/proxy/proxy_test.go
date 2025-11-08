@@ -102,7 +102,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
-	ProxyHandler(rr, req, config, logger)
+	ProxyHandler(config, logger)(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 
@@ -140,7 +140,7 @@ func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
 	q.Set("query", `{app="lokxy"}`)
 	req.URL.RawQuery = q.Encode()
 
-	ProxyHandler(rr, req, config, logger)
+	ProxyHandler(config, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var out struct {
@@ -181,7 +181,7 @@ func TestProxy_UnknownPath_ForwardsFirstResponseWithGzipBody(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
 
-	ProxyHandler(rr, req, config, logger)
+	ProxyHandler(config, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.JSONEq(t, string(plain), rr.Body.String())
 }
@@ -243,7 +243,7 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, up, body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	ProxyHandler(rr, req, config, logger)
+	ProxyHandler(config, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	assert.Equal(t, `query={app="lokxy"}`, got1)
@@ -272,7 +272,7 @@ func TestProxy_UpstreamHeadersInjected(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, up, nil)
 	req.Header.Set("X-Lokxy", "from-client") // should be overwritten by config
 
-	ProxyHandler(rr, req, cfg, logger)
+	ProxyHandler(cfg, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "from-config", seen)
 }
@@ -304,7 +304,7 @@ func TestProxy_DetectedFieldValues_PartialUpstreamFailure(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_field/"+encoded+"/values", nil)
 
-	ProxyHandler(rr, req, config, logger)
+	ProxyHandler(config, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var out struct {
@@ -355,7 +355,7 @@ func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series", nil)
 
-	ProxyHandler(rr, req, cfg, logger)
+	ProxyHandler(cfg, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, 1, called)
 }

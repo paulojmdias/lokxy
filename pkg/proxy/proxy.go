@@ -120,53 +120,7 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 	return client, nil
 }
 
-func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, logger log.Logger) {
-	ctx := r.Context()
-	ctx, span := traces.CreateSpan(ctx, "lokxy_proxy_handler")
-	defer span.End()
-
-	startTime := time.Now()
-	path := r.URL.Path
-	method := r.Method
-
-	span.SetAttributes(
-		attribute.String("path", path),
-		attribute.String("method", method),
-		attribute.String("query", r.URL.RawQuery),
-		attribute.Int("server_groups", len(config.ServerGroups)),
-	)
-
-	var requestPool = sync.Pool{
-		New: func() any {
-			return new(http.Request)
-		},
-	}
-
-	level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
-
-	results := make(chan *http.Response, len(config.ServerGroups))
-	errors := make(chan error, len(config.ServerGroups))
-
-	// Read the original request body once
-	var bodyBytes []byte
-	if r.Body != nil {
-		var err error
-		bodyBytes, err = io.ReadAll(r.Body)
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "Failed to read request body")
-			level.Error(logger).Log("msg", "Failed to read request body", "err", err)
-			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-			return
-		}
-		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-	}
-
-	// Function to create a fresh reader for each request
-	bodyReader := func() io.ReadCloser {
-		return io.NopCloser(bytes.NewReader(bodyBytes))
-	}
-
+func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWriter, *http.Request) {
 	clients := make(map[string]*http.Client)
 	for _, instance := range config.ServerGroups {
 		client, err := createHTTPClient(instance, logger)
@@ -177,147 +131,185 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request, config *cfg.Config, lo
 		clients[instance.Name] = client
 	}
 
-	// Forward requests using the custom RoundTripper
-	var wg sync.WaitGroup
-	for _, instance := range config.ServerGroups {
-		wg.Add(1)
-		go func(instance cfg.ServerGroup) {
-			defer wg.Done()
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := traces.CreateSpan(r.Context(), "lokxy_proxy_handler")
+		defer span.End()
 
-			upstreamCtx, requestSpan := traces.CreateSpan(ctx, "proxy_upstream_request")
-			defer requestSpan.End()
+		startTime := time.Now()
+		path := r.URL.Path
+		method := r.Method
 
-			requestSpan.SetAttributes(
-				attribute.String("upstream.name", instance.Name),
-				attribute.String("upstream.url", instance.URL),
-			)
+		span.SetAttributes(
+			attribute.String("path", path),
+			attribute.String("method", method),
+			attribute.String("query", r.URL.RawQuery),
+			attribute.Int("server_groups", len(config.ServerGroups)),
+		)
 
-			client, ok := clients[instance.Name]
-			if !ok {
-				requestSpan.SetStatus(codes.Error, "Missing HTTP client")
-				level.Error(logger).Log("msg", "Missing HTTP client", "instance", instance.Name)
-				return
-			}
+		level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
 
-			targetURL := instance.URL + r.URL.Path
-			if r.URL.RawQuery != "" {
-				targetURL += "?" + r.URL.RawQuery
-			}
+		results := make(chan *http.Response, len(config.ServerGroups))
+		errors := make(chan error, len(config.ServerGroups))
 
-			requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
-
-			// Record the request
-			if metrics.RequestCount != nil {
-				metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
-					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
-				))
-			}
-
-			req := requestPool.Get().(*http.Request)
-			defer requestPool.Put(req)
-
-			req, err := http.NewRequestWithContext(upstreamCtx, r.Method, targetURL, bodyReader())
+		// Read the original request body once
+		var bodyBytes []byte
+		if r.Body != nil {
+			var err error
+			bodyBytes, err = io.ReadAll(r.Body)
 			if err != nil {
-				requestSpan.RecordError(err)
-				requestSpan.SetStatus(codes.Error, "Failed to create request")
-				// Record error count
-				if metrics.RequestFailures != nil {
-					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-						attribute.String("path", r.URL.Path),
-						attribute.String("method", r.Method),
-						attribute.String("instance", instance.Name),
-					))
-				}
-				level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
-				select {
-				case errors <- err:
-				default:
-					level.Warn(logger).Log("msg", "Skipping send to closed errors channel")
-				}
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "Failed to read request body")
+				level.Error(logger).Log("msg", "Failed to read request body", "err", err)
+				http.Error(w, "Failed to read request body", http.StatusInternalServerError)
 				return
 			}
-
-			req.Header = r.Header.Clone()
-			for key, value := range instance.Headers {
-				req.Header.Set(key, value)
-			}
-
-			traces.InjectTraceToHTTPRequest(upstreamCtx, req)
-
-			for name, headers := range req.Header {
-				for _, h := range headers {
-					level.Debug(logger).Log("msg", "Request Header", "Name", name, "Value", h)
-				}
-			}
-
-			resp, err := client.Do(req)
-			if err != nil {
-				requestSpan.RecordError(err)
-				requestSpan.SetStatus(codes.Error, "Error querying Loki instance")
-				// Record error count
-				if metrics.RequestFailures != nil {
-					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-						attribute.String("path", r.URL.Path),
-						attribute.String("method", r.Method),
-						attribute.String("instance", instance.Name),
-					))
-				}
-				level.Error(logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
-				errors <- err
-				return
-			}
-
-			requestSpan.SetAttributes(
-				attribute.Int("upstream.status_code", resp.StatusCode),
-				attribute.String("upstream.content_type", resp.Header.Get("Content-Type")),
-				attribute.Int64("upstream.content_length", resp.ContentLength),
-			)
-
-			// Measure response time
-			if metrics.RequestDuration != nil {
-				metrics.RequestDuration.Record(upstreamCtx, time.Since(startTime).Seconds(),
-					metric.WithAttributes(
-						attribute.String("path", r.URL.Path),
-						attribute.String("method", r.Method),
-						attribute.String("instance", instance.Name),
-					),
-				)
-			}
-
-			select {
-			case results <- resp:
-			default:
-				level.Warn(logger).Log("msg", "Skipping send to closed results channel")
-			}
-		}(instance)
-	}
-
-	go func() {
-		wg.Wait()
-		close(results)
-		close(errors)
-	}()
-
-	if handlerFunc, ok := apiRoutes[path]; ok {
-		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
-		handlerFunc(ctx, w, results, logger)
-	} else if strings.HasPrefix(path, "/loki/api/v1/label/") && strings.HasSuffix(path, "/values") {
-		span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
-		handler.HandleLokiLabels(ctx, w, results, logger)
-	} else if strings.HasPrefix(path, "/loki/api/v1/detected_field/") && strings.HasSuffix(path, "/values") {
-		span.SetAttributes(attribute.String("proxy.route_type", "detected_field_values"))
-		if fieldName, ok := extractDetectedFieldName(path); ok {
-			handler.HandleLokiDetectedFieldValues(ctx, w, results, fieldName, logger)
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		}
-	} else if strings.HasPrefix(path, "/loki/api/v1/tail") {
-		span.SetAttributes(attribute.String("proxy.route_type", "websocket"))
-		handler.HandleTailWebSocket(ctx, w, r, config, logger)
-	} else {
-		span.SetAttributes(attribute.String("proxy.route_type", "first_response"))
-		level.Warn(logger).Log("msg", "No route matched, returning first response only")
-		forwardFirstResponse(w, results, logger)
+
+		// Function to create a fresh reader for each request
+		bodyReader := func() io.ReadCloser {
+			return io.NopCloser(bytes.NewReader(bodyBytes))
+		}
+
+		// Forward requests using the custom RoundTripper
+		var wg sync.WaitGroup
+		for _, instance := range config.ServerGroups {
+			wg.Add(1)
+			go func(instance cfg.ServerGroup) {
+				defer wg.Done()
+
+				upstreamCtx, requestSpan := traces.CreateSpan(ctx, "proxy_upstream_request")
+				defer requestSpan.End()
+
+				requestSpan.SetAttributes(
+					attribute.String("upstream.name", instance.Name),
+					attribute.String("upstream.url", instance.URL),
+				)
+
+				client, ok := clients[instance.Name]
+				if !ok {
+					requestSpan.SetStatus(codes.Error, "Missing HTTP client")
+					level.Error(logger).Log("msg", "Missing HTTP client", "instance", instance.Name)
+					return
+				}
+
+				targetURL := instance.URL + r.URL.Path
+				if r.URL.RawQuery != "" {
+					targetURL += "?" + r.URL.RawQuery
+				}
+
+				requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
+
+				// Record the request
+				if metrics.RequestCount != nil {
+					metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
+						attribute.String("path", r.URL.Path),
+						attribute.String("method", r.Method),
+						attribute.String("instance", instance.Name),
+					))
+				}
+
+				req, err := http.NewRequestWithContext(upstreamCtx, r.Method, targetURL, bodyReader())
+				if err != nil {
+					requestSpan.RecordError(err)
+					requestSpan.SetStatus(codes.Error, "Failed to create request")
+					// Record error count
+					if metrics.RequestFailures != nil {
+						metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
+							attribute.String("path", r.URL.Path),
+							attribute.String("method", r.Method),
+							attribute.String("instance", instance.Name),
+						))
+					}
+					level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
+					select {
+					case errors <- err:
+					default:
+						level.Warn(logger).Log("msg", "Skipping send to closed errors channel")
+					}
+					return
+				}
+
+				req.Header = r.Header.Clone()
+				for key, value := range instance.Headers {
+					req.Header.Set(key, value)
+				}
+
+				traces.InjectTraceToHTTPRequest(upstreamCtx, req)
+
+				for name, headers := range req.Header {
+					for _, h := range headers {
+						level.Debug(logger).Log("msg", "Request Header", "Name", name, "Value", h)
+					}
+				}
+
+				resp, err := client.Do(req)
+				if err != nil {
+					requestSpan.RecordError(err)
+					requestSpan.SetStatus(codes.Error, "Error querying Loki instance")
+					// Record error count
+					if metrics.RequestFailures != nil {
+						metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
+							attribute.String("path", r.URL.Path),
+							attribute.String("method", r.Method),
+							attribute.String("instance", instance.Name),
+						))
+					}
+					level.Error(logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
+					errors <- err
+					return
+				}
+
+				requestSpan.SetAttributes(
+					attribute.Int("upstream.status_code", resp.StatusCode),
+					attribute.String("upstream.content_type", resp.Header.Get("Content-Type")),
+					attribute.Int64("upstream.content_length", resp.ContentLength),
+				)
+
+				// Measure response time
+				if metrics.RequestDuration != nil {
+					metrics.RequestDuration.Record(upstreamCtx, time.Since(startTime).Seconds(),
+						metric.WithAttributes(
+							attribute.String("path", r.URL.Path),
+							attribute.String("method", r.Method),
+							attribute.String("instance", instance.Name),
+						),
+					)
+				}
+
+				select {
+				case results <- resp:
+				default:
+					level.Warn(logger).Log("msg", "Skipping send to closed results channel")
+				}
+			}(instance)
+		}
+
+		go func() {
+			wg.Wait()
+			close(results)
+			close(errors)
+		}()
+
+		if handlerFunc, ok := apiRoutes[path]; ok {
+			span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
+			handlerFunc(ctx, w, results, logger)
+		} else if strings.HasPrefix(path, "/loki/api/v1/label/") && strings.HasSuffix(path, "/values") {
+			span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
+			handler.HandleLokiLabels(ctx, w, results, logger)
+		} else if strings.HasPrefix(path, "/loki/api/v1/detected_field/") && strings.HasSuffix(path, "/values") {
+			span.SetAttributes(attribute.String("proxy.route_type", "detected_field_values"))
+			if fieldName, ok := extractDetectedFieldName(path); ok {
+				handler.HandleLokiDetectedFieldValues(ctx, w, results, fieldName, logger)
+			}
+		} else if strings.HasPrefix(path, "/loki/api/v1/tail") {
+			span.SetAttributes(attribute.String("proxy.route_type", "websocket"))
+			handler.HandleTailWebSocket(ctx, w, r, config, logger)
+		} else {
+			span.SetAttributes(attribute.String("proxy.route_type", "first_response"))
+			level.Warn(logger).Log("msg", "No route matched, returning first response only")
+			forwardFirstResponse(w, results, logger)
+		}
 	}
 }
 

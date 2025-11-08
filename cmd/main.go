@@ -56,6 +56,7 @@ func main() {
 	}()
 
 	// Set up Prometheus metrics server
+	//
 	metricServer := http.NewServeMux()
 	metricServer.Handle("/metrics", promhttp.Handler())
 
@@ -86,7 +87,7 @@ func main() {
 		}
 	})
 
-	//Liveness probe endpoint
+	// Liveness probe endpoint
 	http.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("OK")); err != nil {
@@ -110,15 +111,7 @@ func main() {
 	})
 
 	// Register the proxy handler for all other requests
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := traces.ExtractTraceFromHTTPRequest(r)
-
-		// Add span for this request
-		_, span := traces.CreateSpan(ctx, "proxy_request")
-		defer span.End()
-
-		proxy.ProxyHandler(w, r, cfg, logger)
-	})
+	http.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
 
 	go func() {
 		time.Sleep(5 * time.Second)
