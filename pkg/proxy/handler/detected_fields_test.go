@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,12 +48,12 @@ func TestDetectedFields_VariantA_Single(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
 	require.NotNil(t, out.Limit)
-	assert.Equal(t, 1000, *out.Limit)
-	assert.Len(t, out.Fields, 2)
+	require.Equal(t, 1000, *out.Limit)
+	require.Len(t, out.Fields, 2)
 
 	// ensure sort by label
 	for i := 1; i < len(out.Fields); i++ {
-		assert.LessOrEqual(t, out.Fields[i-1].Label, out.Fields[i].Label, "fields not sorted")
+		require.LessOrEqual(t, out.Fields[i-1].Label, out.Fields[i].Label, "fields not sorted")
 	}
 }
 
@@ -81,12 +80,12 @@ func TestDetectedFields_VariantB_Merge(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
 	want := map[string]int{"job": 5, "instance": 1, "service": 4}
-	assert.Len(t, out.Fields, len(want))
+	require.Len(t, out.Fields, len(want))
 	got := map[string]int{}
 	for _, f := range out.Fields {
 		got[f.Label] = f.Cardinality
 	}
-	assert.Equal(t, want, got)
+	require.Equal(t, want, got)
 }
 
 func TestDetectedFields_ParsersUnionAndType(t *testing.T) {
@@ -112,10 +111,10 @@ func TestDetectedFields_ParsersUnionAndType(t *testing.T) {
 
 	require.Len(t, out.Fields, 1)
 	app := out.Fields[0]
-	assert.Equal(t, 5, app.Cardinality)
-	assert.Equal(t, "string", app.Type)
+	require.Equal(t, 5, app.Cardinality)
+	require.Equal(t, "string", app.Type)
 	// union of parsers = ["json","logfmt"] sorted
-	assert.Equal(t, []string{"json", "logfmt"}, app.Parsers)
+	require.Equal(t, []string{"json", "logfmt"}, app.Parsers)
 }
 
 func TestDetectedFields_InvalidJSONAndReaderErr(t *testing.T) {
@@ -133,7 +132,7 @@ func TestDetectedFields_InvalidJSONAndReaderErr(t *testing.T) {
 
 	var out LokiDetectedFieldsOut
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
-	assert.Empty(t, out.Fields)
+	require.Empty(t, out.Fields)
 }
 
 // ----------------- /detected_field/{name}/values tests -----------------
@@ -162,9 +161,9 @@ func TestDetectedFieldValues_SingleAndSorted(t *testing.T) {
 	var out LokiDetectedFieldValuesResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
-	assert.Equal(t, fieldName, out.Field)
+	require.Equal(t, fieldName, out.Field)
 	for i := 1; i < len(out.Values); i++ {
-		assert.LessOrEqual(t, out.Values[i-1].Value, out.Values[i].Value, "values not sorted")
+		require.LessOrEqual(t, out.Values[i-1].Value, out.Values[i].Value, "values not sorted")
 	}
 }
 
@@ -192,12 +191,12 @@ func TestDetectedFieldValues_MergeAcrossBackends(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
 	want := map[string]int{"api": 5, "worker": 1, "scheduler": 4}
-	assert.Len(t, out.Values, len(want))
+	require.Len(t, out.Values, len(want))
 	got := map[string]int{}
 	for _, v := range out.Values {
 		got[v.Value] = v.Count
 	}
-	assert.Equal(t, want, got)
+	require.Equal(t, want, got)
 }
 
 func TestDetectedFieldValues_InvalidJSONAndReaderErr(t *testing.T) {
@@ -216,5 +215,5 @@ func TestDetectedFieldValues_InvalidJSONAndReaderErr(t *testing.T) {
 
 	var out LokiDetectedFieldValuesResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
-	assert.Empty(t, out.Values)
+	require.Empty(t, out.Values)
 }

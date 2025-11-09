@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,11 +70,11 @@ func TestHandleLokiDetectedLabels(t *testing.T) {
 			var resp LokiDetectedLabelsResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
-			assert.Len(t, resp.DetectedLabels, tt.expectedLabels)
+			require.Len(t, resp.DetectedLabels, tt.expectedLabels)
 
 			// ensure sorting order
 			for i := 1; i < len(resp.DetectedLabels); i++ {
-				assert.LessOrEqualf(t,
+				require.LessOrEqualf(t,
 					resp.DetectedLabels[i-1].Label,
 					resp.DetectedLabels[i].Label,
 					"Labels not sorted: %s > %s",
@@ -110,8 +109,8 @@ func TestHandleLokiDetectedLabelsWithMerging(t *testing.T) {
 
 	require.Len(t, resp.DetectedLabels, 1)
 	label := resp.DetectedLabels[0]
-	assert.Equal(t, "job", label.Label)
-	assert.Equal(t, 5, label.Cardinality)
+	require.Equal(t, "job", label.Label)
+	require.Equal(t, 5, label.Cardinality)
 }
 
 func TestHandleLokiDetectedLabelsWithInvalidJSON(t *testing.T) {
@@ -129,7 +128,7 @@ func TestHandleLokiDetectedLabelsWithInvalidJSON(t *testing.T) {
 	var resp LokiDetectedLabelsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
-	assert.Empty(t, resp.DetectedLabels)
+	require.Empty(t, resp.DetectedLabels)
 }
 
 func TestHandleLokiDetectedLabelsResponseReaderError(t *testing.T) {
@@ -149,7 +148,7 @@ func TestHandleLokiDetectedLabelsResponseReaderError(t *testing.T) {
 	var out LokiDetectedLabelsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 
-	assert.Empty(t, out.DetectedLabels)
+	require.Empty(t, out.DetectedLabels)
 }
 
 // failingDetectedLabelsReader always fails on Read
