@@ -11,6 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type statsResponse struct {
+	Streams int `json:"streams"`
+	Chunks  int `json:"chunks"`
+	Bytes   int `json:"bytes"`
+	Entries int `json:"entries"`
+}
+
+func decodeStatsResponse(t *testing.T, w *httptest.ResponseRecorder) statsResponse {
+	t.Helper()
+
+	var response statsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	return response
+}
+
 func TestHandleLokiStats_SingleResponse(t *testing.T) {
 	logger := log.NewNopLogger()
 
@@ -30,13 +46,12 @@ func TestHandleLokiStats_SingleResponse(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
-	require.Equal(t, float64(10), response["streams"])
-	require.Equal(t, float64(100), response["chunks"])
-	require.Equal(t, float64(1024000), response["bytes"])
-	require.Equal(t, float64(50000), response["entries"])
+	require.Equal(t, 10, response.Streams)
+	require.Equal(t, 100, response.Chunks)
+	require.Equal(t, 1024000, response.Bytes)
+	require.Equal(t, 50000, response.Entries)
 }
 
 func TestHandleLokiStats_MultipleResponses(t *testing.T) {
@@ -59,14 +74,13 @@ func TestHandleLokiStats_MultipleResponses(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
 	// Values should be summed across all backends
-	require.Equal(t, float64(60), response["streams"])   // 10 + 20 + 30
-	require.Equal(t, float64(600), response["chunks"])   // 100 + 200 + 300
-	require.Equal(t, float64(6000), response["bytes"])   // 1000 + 2000 + 3000
-	require.Equal(t, float64(3000), response["entries"]) // 500 + 1000 + 1500
+	require.Equal(t, 60, response.Streams)   // 10 + 20 + 30
+	require.Equal(t, 600, response.Chunks)   // 100 + 200 + 300
+	require.Equal(t, 6000, response.Bytes)   // 1000 + 2000 + 3000
+	require.Equal(t, 3000, response.Entries) // 500 + 1000 + 1500
 }
 
 func TestHandleLokiStats_EmptyStats(t *testing.T) {
@@ -83,13 +97,12 @@ func TestHandleLokiStats_EmptyStats(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
-	require.Equal(t, float64(0), response["streams"])
-	require.Equal(t, float64(0), response["chunks"])
-	require.Equal(t, float64(0), response["bytes"])
-	require.Equal(t, float64(0), response["entries"])
+	require.Equal(t, 0, response.Streams)
+	require.Equal(t, 0, response.Chunks)
+	require.Equal(t, 0, response.Bytes)
+	require.Equal(t, 0, response.Entries)
 }
 
 func TestHandleLokiStats_InvalidJSON(t *testing.T) {
@@ -104,14 +117,13 @@ func TestHandleLokiStats_InvalidJSON(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
 	// Should return zero values on unmarshal error
-	require.Equal(t, float64(0), response["streams"])
-	require.Equal(t, float64(0), response["chunks"])
-	require.Equal(t, float64(0), response["bytes"])
-	require.Equal(t, float64(0), response["entries"])
+	require.Equal(t, 0, response.Streams)
+	require.Equal(t, 0, response.Chunks)
+	require.Equal(t, 0, response.Bytes)
+	require.Equal(t, 0, response.Entries)
 }
 
 func TestHandleLokiStats_ResponseReaderError(t *testing.T) {
@@ -127,14 +139,13 @@ func TestHandleLokiStats_ResponseReaderError(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
 	// Should return zero values on read error
-	require.Equal(t, float64(0), response["streams"])
-	require.Equal(t, float64(0), response["chunks"])
-	require.Equal(t, float64(0), response["bytes"])
-	require.Equal(t, float64(0), response["entries"])
+	require.Equal(t, 0, response.Streams)
+	require.Equal(t, 0, response.Chunks)
+	require.Equal(t, 0, response.Bytes)
+	require.Equal(t, 0, response.Entries)
 }
 
 func TestHandleLokiStats_PartialFailure(t *testing.T) {
@@ -162,14 +173,13 @@ func TestHandleLokiStats_PartialFailure(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
 	// Should sum only the successful responses
-	require.Equal(t, float64(30), response["streams"])   // 10 + 20
-	require.Equal(t, float64(300), response["chunks"])   // 100 + 200
-	require.Equal(t, float64(3000), response["bytes"])   // 1000 + 2000
-	require.Equal(t, float64(1500), response["entries"]) // 500 + 1000
+	require.Equal(t, 30, response.Streams)   // 10 + 20
+	require.Equal(t, 300, response.Chunks)   // 100 + 200
+	require.Equal(t, 3000, response.Bytes)   // 1000 + 2000
+	require.Equal(t, 1500, response.Entries) // 500 + 1000
 }
 
 func TestHandleLokiStats_LargeNumbers(t *testing.T) {
@@ -191,13 +201,12 @@ func TestHandleLokiStats_LargeNumbers(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
-	require.Equal(t, float64(1000000), response["streams"])
-	require.Equal(t, float64(50000000), response["chunks"])
-	require.Equal(t, float64(10737418240), response["bytes"])
-	require.Equal(t, float64(500000000), response["entries"])
+	require.Equal(t, 1000000, response.Streams)
+	require.Equal(t, 50000000, response.Chunks)
+	require.Equal(t, 10737418240, response.Bytes)
+	require.Equal(t, 500000000, response.Entries)
 }
 
 func TestHandleLokiStats_MixedZeroAndNonZero(t *testing.T) {
@@ -220,14 +229,13 @@ func TestHandleLokiStats_MixedZeroAndNonZero(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
 	// Only the middle backend has values
-	require.Equal(t, float64(10), response["streams"])
-	require.Equal(t, float64(100), response["chunks"])
-	require.Equal(t, float64(1000), response["bytes"])
-	require.Equal(t, float64(500), response["entries"])
+	require.Equal(t, 10, response.Streams)
+	require.Equal(t, 100, response.Chunks)
+	require.Equal(t, 1000, response.Bytes)
+	require.Equal(t, 500, response.Entries)
 }
 
 func TestHandleLokiStats_NoResponses(t *testing.T) {
@@ -239,14 +247,13 @@ func TestHandleLokiStats_NoResponses(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiStats(t.Context(), w, results, logger)
 
-	var response map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	response := decodeStatsResponse(t, w)
 
 	// Should return zero values when no responses
-	require.Equal(t, float64(0), response["streams"])
-	require.Equal(t, float64(0), response["chunks"])
-	require.Equal(t, float64(0), response["bytes"])
-	require.Equal(t, float64(0), response["entries"])
+	require.Equal(t, 0, response.Streams)
+	require.Equal(t, 0, response.Chunks)
+	require.Equal(t, 0, response.Bytes)
+	require.Equal(t, 0, response.Entries)
 }
 
 // failingStatsReader always fails on Read (simulates network/IO failure)
