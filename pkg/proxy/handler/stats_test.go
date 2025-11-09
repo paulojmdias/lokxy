@@ -63,9 +63,9 @@ func TestHandleLokiStats_MultipleResponses(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 
 	// Values should be summed across all backends
-	require.Equal(t, float64(60), response["streams"])  // 10 + 20 + 30
-	require.Equal(t, float64(600), response["chunks"])  // 100 + 200 + 300
-	require.Equal(t, float64(6000), response["bytes"])  // 1000 + 2000 + 3000
+	require.Equal(t, float64(60), response["streams"])   // 10 + 20 + 30
+	require.Equal(t, float64(600), response["chunks"])   // 100 + 200 + 300
+	require.Equal(t, float64(6000), response["bytes"])   // 1000 + 2000 + 3000
 	require.Equal(t, float64(3000), response["entries"]) // 500 + 1000 + 1500
 }
 

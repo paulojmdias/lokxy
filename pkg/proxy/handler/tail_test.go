@@ -107,7 +107,7 @@ func TestHandleTailWebSocket_Integration(t *testing.T) {
 	// Create a mock Loki backend WebSocket server
 	mockLokiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			CheckOrigin: func(_ *http.Request) bool { return true },
 		}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -218,7 +218,7 @@ func TestHandleTailWebSocket_ContextCancellation(t *testing.T) {
 	// Create a mock backend that stays open
 	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			CheckOrigin: func(_ *http.Request) bool { return true },
 		}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
