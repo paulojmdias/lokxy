@@ -323,24 +323,28 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 
 // Forward the first valid response for non-query endpoints
 func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+	forwarded := false
 	for resp := range results {
-		// Directly copy all headers and body from Loki response to Grafana
-		for key, values := range resp.Header {
-			for _, value := range values {
-				w.Header().Add(key, value)
+		if !forwarded {
+			// Forward the first response
+			for key, values := range resp.Header {
+				for _, value := range values {
+					w.Header().Add(key, value)
+				}
 			}
+
+			w.Header().Set("Connection", "keep-alive")
+			w.WriteHeader(resp.StatusCode)
+			if _, err := io.Copy(w, resp.Body); err != nil {
+				level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
+			}
+			forwarded = true
 		}
 
-		w.Header().Set("Connection", "keep-alive")
-		w.WriteHeader(resp.StatusCode)
-		_, err := io.Copy(w, resp.Body) // Forward the body as-is
-		if err != nil {
-			level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
-		}
+		// Close all response bodies to prevent resource leaks
 		if err := resp.Body.Close(); err != nil {
 			level.Error(logger).Log("msg", "Failed to close response body", "err", err)
 		}
-		return
 	}
 }
 
