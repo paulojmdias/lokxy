@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -24,40 +26,103 @@ logging:
   format: json
 `
 	configFile, err := os.CreateTemp("", "config.yaml")
-	if err != nil {
-		t.Fatalf("Failed to create temp config file: %v", err)
-	}
+	require.NoError(t, err, "Failed to create temp config file")
 	defer os.Remove(configFile.Name())
 
-	if _, err := configFile.Write([]byte(configContent)); err != nil {
-		t.Fatalf("Failed to write to temp config file: %v", err)
-	}
+	_, err = configFile.Write([]byte(configContent))
+	require.NoError(t, err, "Failed to write to temp config file")
 	configFile.Close()
 
 	// Load configuration
 	cfg, err := LoadConfig(configFile.Name())
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
+	require.NoError(t, err, "Failed to load config")
 
 	// Verify the loaded configuration
-	if len(cfg.ServerGroups) != 2 {
-		t.Errorf("Expected 2 server groups, got %d", len(cfg.ServerGroups))
+	require.Len(t, cfg.ServerGroups, 2, "Expected 2 server groups")
+	require.Equal(t, "loki1", cfg.ServerGroups[0].Name, "First server group name")
+	require.Equal(t, "http://loki2.example.com", cfg.ServerGroups[1].URL, "Second server group URL")
+	require.Equal(t, "info", cfg.Logging.Level, "Logging level")
+	require.Equal(t, "json", cfg.Logging.Format, "Logging format")
+}
+
+func TestValidate_EmptyServerGroups(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{},
 	}
 
-	if cfg.ServerGroups[0].Name != "loki1" {
-		t.Errorf("Expected first server group name to be 'loki1', got '%s'", cfg.ServerGroups[0].Name)
+	err := cfg.Validate()
+	require.Error(t, err, "Expected validation error for empty server groups")
+	require.EqualError(t, err, "at least one server group must be configured")
+}
+
+func TestValidate_MissingName(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{
+			{
+				Name: "",
+				URL:  "http://loki1.example.com",
+			},
+		},
 	}
 
-	if cfg.ServerGroups[1].URL != "http://loki2.example.com" {
-		t.Errorf("Expected second server group URL to be 'http://loki2.example.com', got '%s'", cfg.ServerGroups[1].URL)
+	err := cfg.Validate()
+	require.Error(t, err, "Expected validation error for missing name")
+	require.EqualError(t, err, "server_groups[0]: name is required")
+}
+
+func TestValidate_MissingURL(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{
+			{
+				Name: "loki1",
+				URL:  "",
+			},
+		},
 	}
 
-	if cfg.Logging.Level != "info" {
-		t.Errorf("Expected logging level to be 'info', got '%s'", cfg.Logging.Level)
+	err := cfg.Validate()
+	require.Error(t, err, "Expected validation error for missing URL")
+	require.EqualError(t, err, "server_groups[0]: url is required")
+}
+
+func TestValidate_ValidConfig(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{
+			{
+				Name: "loki1",
+				URL:  "http://loki1.example.com",
+			},
+			{
+				Name: "loki2",
+				URL:  "http://loki2.example.com",
+			},
+		},
 	}
 
-	if cfg.Logging.Format != "json" {
-		t.Errorf("Expected logging format to be 'json', got '%s'", cfg.Logging.Format)
-	}
+	err := cfg.Validate()
+	require.NoError(t, err, "Expected no validation error for valid config")
+}
+
+func TestLoadConfig_InvalidConfig(t *testing.T) {
+	// Test that LoadConfig fails when validation fails
+	configContent := `
+server_groups:
+  - name: ""
+    url: http://loki1.example.com
+logging:
+  level: info
+  format: json
+`
+	configFile, err := os.CreateTemp("", "config.yaml")
+	require.NoError(t, err, "Failed to create temp config file")
+	defer os.Remove(configFile.Name())
+
+	_, err = configFile.Write([]byte(configContent))
+	require.NoError(t, err, "Failed to write to temp config file")
+	configFile.Close()
+
+	// Load configuration - should fail validation
+	_, err = LoadConfig(configFile.Name())
+	require.Error(t, err, "Expected LoadConfig to fail for invalid config")
+	require.EqualError(t, err, "server_groups[0]: name is required")
 }
