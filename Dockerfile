@@ -13,7 +13,7 @@ RUN apt update &&\
     curl -sL -o /tmp/lokxy_${LOKXY_VERSION}_${TARGETOS}_${TARGETARCH}.tar.gz https://github.com/paulojmdias/lokxy/releases/download/${LOKXY_VERSION}/lokxy_${LOKXY_VERSION}_${TARGETOS}_${TARGETARCH}.tar.gz &&\
     tar -xvf /tmp/lokxy_${LOKXY_VERSION}_${TARGETOS}_${TARGETARCH}.tar.gz -C /tmp
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13:nonroot
 
 EXPOSE 3100
 
