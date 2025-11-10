@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/paulojmdias/lokxy/pkg/config"
@@ -114,8 +113,6 @@ func main() {
 	http.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
 
 	go func() {
-		time.Sleep(5 * time.Second)
-
 		// Set the application as ready
 		config.SetReady(true)
 		level.Info(logger).Log("msg", "Application is now ready to serve traffic")
