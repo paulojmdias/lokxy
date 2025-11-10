@@ -73,10 +73,10 @@ The application will start serving at the specified port as defined in your conf
 ## How to Run as a Container
 
 ```bash
-docker run --rm -it -p 8080:8080 -v $(pwd)/config.yaml:/lokxy/config.yaml lokxy:latest lokxy --config /lokxy/config.yaml
+docker run --rm -it -p 3100:3100 -v $(pwd)/config.yaml:/lokxy/config.yaml lokxy:latest lokxy --config /lokxy/config.yaml
 ```
 
-This command binds the container to port 8080 and mounts the local config.yaml file for configuration. Adjust ports and file paths as needed.
+This command binds the container to port 3100 and mounts the local config.yaml file for configuration. Adjust ports and file paths as needed.
 
 ## Play with Lokxy
 

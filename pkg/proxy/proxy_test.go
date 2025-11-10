@@ -14,7 +14,6 @@ import (
 
 	"github.com/go-kit/log"
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -108,7 +107,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
-	assert.InDelta(t, 2.0, got["instances"], 1e-9)
+	require.InDelta(t, 2.0, got["instances"], 1e-9)
 }
 
 func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
@@ -152,13 +151,13 @@ func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
 
-	assert.Equal(t, "foo/bar", out.Field)
+	require.Equal(t, "foo/bar", out.Field)
 	values := map[string]int{}
 	for _, v := range out.Values {
 		values[v.Value] = v.Count
 	}
-	assert.Equal(t, 4, values["X"])
-	assert.Equal(t, 2, values["Y"])
+	require.Equal(t, 4, values["X"])
+	require.Equal(t, 2, values["Y"])
 }
 
 func TestProxy_UnknownPath_ForwardsFirstResponseWithGzipBody(t *testing.T) {
@@ -183,7 +182,7 @@ func TestProxy_UnknownPath_ForwardsFirstResponseWithGzipBody(t *testing.T) {
 
 	ProxyHandler(config, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
-	assert.JSONEq(t, string(plain), rr.Body.String())
+	require.JSONEq(t, string(plain), rr.Body.String())
 }
 
 func Test_extractDetectedFieldName(t *testing.T) {
@@ -195,7 +194,7 @@ func Test_extractDetectedFieldName(t *testing.T) {
 	for in, want := range okCases {
 		got, ok := extractDetectedFieldName(in)
 		require.True(t, ok)
-		assert.Equal(t, want, got)
+		require.Equal(t, want, got)
 	}
 
 	bad := []string{
@@ -206,7 +205,7 @@ func Test_extractDetectedFieldName(t *testing.T) {
 	}
 	for _, in := range bad {
 		_, ok := extractDetectedFieldName(in)
-		assert.False(t, ok)
+		require.False(t, ok)
 	}
 }
 
@@ -246,8 +245,8 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 	ProxyHandler(config, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	assert.Equal(t, `query={app="lokxy"}`, got1)
-	assert.Equal(t, `query={app="lokxy"}`, got2)
+	require.Equal(t, `query={app="lokxy"}`, got1)
+	require.Equal(t, `query={app="lokxy"}`, got2)
 }
 
 func TestProxy_UpstreamHeadersInjected(t *testing.T) {
@@ -274,7 +273,7 @@ func TestProxy_UpstreamHeadersInjected(t *testing.T) {
 
 	ProxyHandler(cfg, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "from-config", seen)
+	require.Equal(t, "from-config", seen)
 }
 
 func TestProxy_DetectedFieldValues_PartialUpstreamFailure(t *testing.T) {
@@ -315,13 +314,13 @@ func TestProxy_DetectedFieldValues_PartialUpstreamFailure(t *testing.T) {
 		} `json:"values"`
 	}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
-	assert.Equal(t, "foo", out.Field)
+	require.Equal(t, "foo", out.Field)
 
 	got := map[string]int{}
 	for _, v := range out.Values {
 		got[v.Value] = v.Count
 	}
-	assert.Equal(t, 2, got["X"])
+	require.Equal(t, 2, got["X"])
 }
 
 func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
@@ -357,5 +356,5 @@ func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 
 	ProxyHandler(cfg, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, 1, called)
+	require.Equal(t, 1, called)
 }

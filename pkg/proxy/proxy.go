@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -65,6 +66,7 @@ func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	if resp.Header.Get("Content-Encoding") == "gzip" {
 		gzReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
+			resp.Body.Close()
 			return nil, err
 		}
 		resp.Body = io.NopCloser(gzReader) // Prevent early closure
@@ -107,9 +109,15 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
 
-	// Create HTTP transport with the custom TLS configuration
+	// Create HTTP transport with the custom TLS configuration and dial timeout
+	dialer := &net.Dialer{
+		Timeout: dialTimeout,
+	}
+
 	transport := &http.Transport{
-		TLSClientConfig: tlsConfig,
+		TLSClientConfig:   tlsConfig,
+		DialContext:       dialer.DialContext,
+		DisableKeepAlives: false,
 	}
 
 	client := &http.Client{
@@ -328,9 +336,11 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, 
 		_, err := io.Copy(w, resp.Body) // Forward the body as-is
 		if err != nil {
 			level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
-			return
 		}
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			level.Error(logger).Log("msg", "Failed to close response body", "err", err)
+		}
+		return
 	}
 }
 
