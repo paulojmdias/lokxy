@@ -176,6 +176,7 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 						attribute.String("instance", instance.Name),
 					))
 					body, _ := io.ReadAll(resp.Body)
+					resp.Body.Close()
 					level.Error(logger).Log("msg", "Handshake response", "status", resp.StatusCode, "body", string(body))
 				}
 				return

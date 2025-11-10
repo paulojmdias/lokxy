@@ -23,10 +23,9 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 	var encodingFlagsMap = make(map[string]struct{})
 
 	for resp := range results {
-		defer resp.Body.Close()
-
 		// Read the entire body
 		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			level.Error(logger).Log("msg", "Failed to read response body", "err", err)
 			continue
