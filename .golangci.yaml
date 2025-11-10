@@ -33,6 +33,8 @@ linters:
           deny:
             - pkg: github.com/go-kit/kit/log
               desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log
+    testifylint:
+      enable-all: true
   exclusions:
     generated: lax
     presets:

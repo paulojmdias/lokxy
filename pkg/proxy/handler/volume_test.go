@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -100,8 +99,8 @@ func TestHandleLokiVolume(t *testing.T) {
 			var volumeResponse VolumeResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
 
-			assert.Equal(t, tt.expectedStatus, volumeResponse.Status)
-			assert.Len(t, volumeResponse.Data.Result, tt.expectedVolumes)
+			require.Equal(t, tt.expectedStatus, volumeResponse.Status)
+			require.Len(t, volumeResponse.Data.Result, tt.expectedVolumes)
 		})
 	}
 }
@@ -121,8 +120,8 @@ func TestHandleLokiVolumeWithInvalidJSON(t *testing.T) {
 	var volumeResponse VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
 
-	assert.Equal(t, statusSuccess, volumeResponse.Status)
-	assert.Empty(t, volumeResponse.Data.Result)
+	require.Equal(t, statusSuccess, volumeResponse.Status)
+	require.Empty(t, volumeResponse.Data.Result)
 }
 
 func TestHandleLokiVolumeResponseReaderError(t *testing.T) {
@@ -142,8 +141,8 @@ func TestHandleLokiVolumeResponseReaderError(t *testing.T) {
 	var volumeResponse VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
 
-	assert.Equal(t, statusSuccess, volumeResponse.Status)
-	assert.Empty(t, volumeResponse.Data.Result)
+	require.Equal(t, statusSuccess, volumeResponse.Status)
+	require.Empty(t, volumeResponse.Data.Result)
 }
 
 // failingReader is a helper that always returns an error
@@ -235,9 +234,9 @@ func TestHandleLokiVolumeRange(t *testing.T) {
 			var volumeResponse VolumeResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
 
-			assert.Equal(t, statusSuccess, volumeResponse.Status)
-			assert.Equal(t, resultTypeMatrix, volumeResponse.Data.ResultType)
-			assert.Len(t, volumeResponse.Data.Result, tt.expectedVolumes)
+			require.Equal(t, statusSuccess, volumeResponse.Status)
+			require.Equal(t, resultTypeMatrix, volumeResponse.Data.ResultType)
+			require.Len(t, volumeResponse.Data.Result, tt.expectedVolumes)
 		})
 	}
 }
