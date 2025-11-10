@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -32,8 +31,7 @@ func main() {
 	// Load configuration
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		fmt.Println("Failed to load config:", err)
-		return
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
 	// Set up logging
@@ -74,7 +72,7 @@ func main() {
 	}
 	defer func() {
 		if err := tracerProvider.Shutdown(ctx); err != nil {
-			log.Fatalf("Failed to shutdown tracer provider: %v", err)
+			level.Error(logger).Log("msg", "Failed to shutdown tracer provider", "err", err)
 		}
 	}()
 
@@ -112,11 +110,9 @@ func main() {
 	// Register the proxy handler for all other requests
 	http.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
 
-	go func() {
-		// Set the application as ready
-		config.SetReady(true)
-		level.Info(logger).Log("msg", "Application is now ready to serve traffic")
-	}()
+	// Set the application as ready
+	config.SetReady(true)
+	level.Info(logger).Log("msg", "Application is now ready to serve traffic")
 
 	// Start the HTTP server
 	level.Info(logger).Log("msg", "Listening", "addr", *bindAddr)
