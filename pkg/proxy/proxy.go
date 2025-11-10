@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// Varible to hold the API routes and their corresponding handlers
+// Variable to hold the API routes and their corresponding handlers
 var apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
 	"/loki/api/v1/query":              handler.HandleLokiQueries,
 	"/loki/api/v1/query_range":        handler.HandleLokiQueries,
