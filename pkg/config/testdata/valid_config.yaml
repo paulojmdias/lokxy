@@ -1,0 +1,14 @@
+server_groups:
+  - name: loki1
+    url: http://loki1.example.com
+    timeout: 10
+    headers:
+      Authorization: Bearer token1
+  - name: loki2
+    url: http://loki2.example.com
+    timeout: 15
+    headers:
+      Authorization: Bearer token2
+logging:
+  level: info
+  format: json
