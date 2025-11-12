@@ -1,0 +1,3 @@
+server_groups:
+  - name: loki1
+    url: http://localhost:3100

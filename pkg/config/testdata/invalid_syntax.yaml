@@ -1,0 +1,5 @@
+server_groups:
+  - name: loki1
+    url: http://loki1.example.com
+    timeout: invalid_number
+  invalid yaml syntax here: [
