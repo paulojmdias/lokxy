@@ -18,6 +18,7 @@ linters:
     - errcheck
     - ineffassign
     - intrange
+    - modernize
     - misspell
     - revive
     - staticcheck
