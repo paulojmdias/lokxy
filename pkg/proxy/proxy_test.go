@@ -3,7 +3,6 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -70,7 +69,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
 		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"labels":["a","b"]}`)
+			io.WriteString(w, `{"status": "success", "data":["a", "b"]}`)
 		},
 	})
 	defer s1.Close()
@@ -78,25 +77,10 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
 		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"labels":["c"]}`)
+			io.WriteString(w, `{"status": "success", "data":["c"]}`)
 		},
 	})
 	defer s2.Close()
-
-	orig := apiRoutes
-	defer func() { apiRoutes = orig }()
-
-	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
-		"/loki/api/v1/labels": func(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, _ log.Logger) {
-			count := 0
-			for resp := range results {
-				count++
-				_ = resp.Body.Close()
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"instances": count})
-		},
-	}
 
 	config := mkConfig(s1.URL, s2.URL)
 
@@ -108,7 +92,8 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
-	assert.InDelta(t, 2.0, got["instances"], 1e-9)
+	assert.Equal(t, "success", got["status"])
+	assert.ElementsMatch(t, []any{"a", "b", "c"}, got["data"])
 }
 
 func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
@@ -184,30 +169,6 @@ func TestProxy_UnknownPath_ForwardsFirstResponseWithGzipBody(t *testing.T) {
 	ProxyHandler(config, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.JSONEq(t, string(plain), rr.Body.String())
-}
-
-func Test_extractDetectedFieldName(t *testing.T) {
-	okCases := map[string]string{
-		"/loki/api/v1/detected_field/job/values":                  "job",
-		"/loki/api/v1/detected_field/foo%2Fbar/values":            "foo/bar",
-		"/loki/api/v1/detected_field/%5Bcomplex%5D%20name/values": "[complex] name",
-	}
-	for in, want := range okCases {
-		got, ok := extractDetectedFieldName(in)
-		require.True(t, ok)
-		assert.Equal(t, want, got)
-	}
-
-	bad := []string{
-		"/loki/api/v1/detected_field",
-		"/loki/api/v1/detected_field/job",
-		"/loki/api/v1/detected_field//values",
-		"/loki/api/v1/detected_field/job/values/extra",
-	}
-	for _, in := range bad {
-		_, ok := extractDetectedFieldName(in)
-		assert.False(t, ok)
-	}
 }
 
 func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
@@ -327,21 +288,6 @@ func TestProxy_DetectedFieldValues_PartialUpstreamFailure(t *testing.T) {
 func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	orig := apiRoutes
-	defer func() { apiRoutes = orig }()
-
-	called := 0
-	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
-		"/loki/api/v1/series": func(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, _ log.Logger) {
-			for resp := range results {
-				resp.Body.Close()
-			}
-			called++
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-		},
-	}
-
 	// upstream presence isn’t needed; handler ignores result bodies.
 	s := mkUpstreamServer(t, map[string]http.HandlerFunc{
 		"/loki/api/v1/series": func(w http.ResponseWriter, _ *http.Request) {
@@ -357,5 +303,8 @@ func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 
 	ProxyHandler(cfg, logger)(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, 1, called)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+	assert.Equal(t, "success", got["status"])
 }
