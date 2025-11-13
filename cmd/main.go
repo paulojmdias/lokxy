@@ -2,9 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/paulojmdias/lokxy/pkg/config"
@@ -13,6 +19,7 @@ import (
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/sync/errgroup"
 )
 
 // Build information, populated at build-time
@@ -22,14 +29,15 @@ var (
 )
 
 func main() {
+	var bindAddr, configPath, metricsAddr string
 	// Parse flags
-	bindAddr := flag.String("bind-addr", ":3100", "Address to bind the proxy server")
-	configPath := flag.String("config", "config.yaml", "Path to the configuration file")
-	metricsAddr := flag.String("metrics-addr", ":9091", "Address to bind the Prometheus metrics server")
+	flag.StringVar(&bindAddr, "bind-addr", ":3100", "Address to bind the proxy server")
+	flag.StringVar(&configPath, "config", "config.yaml", "Path to the configuration file")
+	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "Address to bind the Prometheus metrics server")
 	flag.Parse()
 
 	// Load configuration
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
@@ -40,44 +48,46 @@ func main() {
 	// Startup log
 	level.Info(logger).Log("msg", "Starting lokxy", "version", Version, "revision", Revision)
 
-	ctx := context.Background()
-	// Initialize Prometheus metrics
+	// Create a context that cancels on SIGINT/SIGTERM
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var startWG sync.WaitGroup
+	eg, ctx := errgroup.WithContext(ctx)
+
+	// Initialize Prometheus metrics provider
 	meterProvider, err := metrics.InitMetrics(ctx)
 	if err != nil {
 		log.Fatalf("Failed to initialize Prometheus metrics: %v", err)
 	}
-	defer func() {
-		if err := meterProvider.Shutdown(ctx); err != nil {
-			log.Println(err)
-		}
-	}()
-
-	// Set up Prometheus metrics server
-	//
-	metricServer := http.NewServeMux()
-	metricServer.Handle("/metrics", promhttp.Handler())
-
-	// Start the metrics server
-	go func() {
-		level.Info(logger).Log("msg", "Serving Prometheus metrics", "addr", *metricsAddr)
-		if err := http.ListenAndServe(*metricsAddr, metricServer); err != nil && err != http.ErrServerClosed {
-			level.Error(logger).Log("msg", "Serving Prometheus metrics failed", "err", err)
-		}
-	}()
-
-	// initialize tracer provider
+	// Initialize tracer provider
 	tracerProvider, err := traces.InitTracer(ctx)
 	if err != nil {
 		log.Fatalf("Failed to initialize tracer: %v", err)
 	}
-	defer func() {
-		if err := tracerProvider.Shutdown(ctx); err != nil {
-			level.Error(logger).Log("msg", "Failed to shutdown tracer provider", "err", err)
-		}
-	}()
 
+	// Set up Prometheus metrics server
+	//
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsServer := &http.Server{Addr: metricsAddr, Handler: metricsMux}
+	// Start the metrics server
+	startWG.Add(1)
+	eg.Go(func() error {
+		level.Info(logger).Log("msg", "Serving Prometheus metrics", "addr", metricsAddr)
+		startWG.Done()
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			level.Error(logger).Log("msg", "Serving Prometheus metrics failed", "err", err)
+			return err
+		}
+		return nil
+	})
+
+	// Set up Lokxy proxy server
+	//
+	proxyMux := http.NewServeMux()
 	// Register health check endpoint
-	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+	proxyMux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("OK - Prometheus metrics enabled")); err != nil {
 			log.Printf("failed to write response in /health handler: %v", err)
@@ -85,7 +95,7 @@ func main() {
 	})
 
 	// Liveness probe endpoint
-	http.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
+	proxyMux.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("OK")); err != nil {
 			level.Error(logger).Log("msg", "Failed to write response in /healthy handler", "err", err)
@@ -93,7 +103,7 @@ func main() {
 	})
 
 	// Readiness probe endpoint
-	http.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
+	proxyMux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
 		if config.IsReady() {
 			w.WriteHeader(http.StatusOK)
 			if _, err := w.Write([]byte("OK")); err != nil {
@@ -108,15 +118,58 @@ func main() {
 	})
 
 	// Register the proxy handler for all other requests
-	http.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
+	proxyMux.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
+	proxyServer := &http.Server{Addr: bindAddr, Handler: traces.HTTPTracesHandler(logger)(proxyMux)}
 
+	// Start the proxy HTTP server
+	startWG.Add(1)
+	eg.Go(func() error {
+		level.Info(logger).Log("msg", "Listening", "addr", bindAddr)
+		startWG.Done()
+		if err := proxyServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			level.Error(logger).Log("msg", "Serving lokxy failed", "err", err)
+			return err
+		}
+		return nil
+	})
+
+	// Let other go routines to start http servers before changing the configuration
+	startWG.Wait()
 	// Set the application as ready
 	config.SetReady(true)
 	level.Info(logger).Log("msg", "Application is now ready to serve traffic")
 
-	// Start the HTTP server
-	level.Info(logger).Log("msg", "Listening", "addr", *bindAddr)
-	if err := http.ListenAndServe(*bindAddr, traces.HTTPTracesHandler(logger)(http.DefaultServeMux)); err != nil {
-		level.Info(logger).Log("msg", "Serving lokxy failed", "err", err)
+	// Serve and wait for context cancellation
+	<-ctx.Done()
+	level.Info(logger).Log("msg", "Server is starting to exit...")
+
+	// Shutdown
+	config.SetReady(false)
+
+	// Give outstanding requests some seconds to complete
+	shutdownCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	if err := proxyServer.Shutdown(shutdownCtx); err != nil {
+		level.Info(logger).Log("msg", "Proxy server forced to shutdown", "err", err)
 	}
+
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		level.Info(logger).Log("msg", "Metrics server forced to shutdown", "err", err)
+	}
+
+	if err := eg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+		level.Info(logger).Log("msg", "Error during the shutdown", "err", err)
+	}
+
+	// Shutdown OTEL related services
+	if err := tracerProvider.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+		level.Error(logger).Log("msg", "Failed to shutdown tracer provider", "err", err)
+	}
+
+	if err := meterProvider.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+		level.Error(logger).Log("msg", "Failed to shutdown meter provider", "err", err)
+	}
+
+	level.Info(logger).Log("msg", "Server exited")
 }
