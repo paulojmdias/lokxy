@@ -339,6 +339,11 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, 
 				level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
 			}
 			forwarded = true
+		} else {
+			// Drain the body of non-forwarded responses to prevent connection leaks
+			if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+				level.Error(logger).Log("msg", "Failed to drain response body", "err", err)
+			}
 		}
 
 		// Close all response bodies to prevent resource leaks
