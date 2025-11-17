@@ -18,7 +18,6 @@ func TestLoadConfig(t *testing.T) {
 			configFile: "testdata/valid_config.yaml",
 			wantErr:    false,
 			validateFunc: func(t *testing.T, cfg *Config) {
-				require.NotNil(t, cfg)
 				require.Len(t, cfg.ServerGroups, 2)
 
 				// Verify first server group
@@ -42,7 +41,6 @@ func TestLoadConfig(t *testing.T) {
 			configFile: "testdata/minimal_config.yaml",
 			wantErr:    false,
 			validateFunc: func(t *testing.T, cfg *Config) {
-				require.NotNil(t, cfg)
 				require.Len(t, cfg.ServerGroups, 1)
 
 				require.Equal(t, "loki1", cfg.ServerGroups[0].Name)
@@ -55,7 +53,6 @@ func TestLoadConfig(t *testing.T) {
 			configFile: "testdata/full_config.yaml",
 			wantErr:    false,
 			validateFunc: func(t *testing.T, cfg *Config) {
-				require.NotNil(t, cfg)
 				require.Len(t, cfg.ServerGroups, 2)
 
 				// Verify first server group with full TLS config
@@ -81,7 +78,6 @@ func TestLoadConfig(t *testing.T) {
 			configFile: "testdata/tls_config.yaml",
 			wantErr:    false,
 			validateFunc: func(t *testing.T, cfg *Config) {
-				require.NotNil(t, cfg)
 				require.Len(t, cfg.ServerGroups, 1)
 
 				require.Equal(t, "secure-loki", cfg.ServerGroups[0].Name)
