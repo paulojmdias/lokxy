@@ -147,7 +147,7 @@ func main() {
 	config.SetReady(false)
 
 	// Give outstanding requests some seconds to complete
-	shutdownCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if err := proxyServer.Shutdown(shutdownCtx); err != nil {
