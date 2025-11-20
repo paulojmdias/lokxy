@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"sync/atomic"
 	"time"
@@ -55,7 +56,30 @@ func LoadConfig(configFile string) (*Config, error) {
 		return nil, err
 	}
 
+	// Validate configuration
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+
 	return &config, nil
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	if len(c.ServerGroups) == 0 {
+		return fmt.Errorf("at least one server group must be configured")
+	}
+
+	for i, sg := range c.ServerGroups {
+		if sg.Name == "" {
+			return fmt.Errorf("server_groups[%d]: name is required", i)
+		}
+		if sg.URL == "" {
+			return fmt.Errorf("server_groups[%d]: url is required", i)
+		}
+	}
+
+	return nil
 }
 
 func SetReady(ready bool) {

@@ -1,63 +1,124 @@
 package config
 
 import (
-	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadConfig(t *testing.T) {
-	// Set up a temporary config file
-	configContent := `
-server_groups:
-  - name: loki1
-    url: http://loki1.example.com
-    timeout: 10
-    headers:
-      Authorization: Bearer token1
-  - name: loki2
-    url: http://loki2.example.com
-    timeout: 15
-    headers:
-      Authorization: Bearer token2
-logging:
-  level: info
-  format: json
-`
-	configFile, err := os.CreateTemp("", "config.yaml")
-	if err != nil {
-		t.Fatalf("Failed to create temp config file: %v", err)
-	}
-	defer os.Remove(configFile.Name())
+	tests := []struct {
+		name         string
+		configFile   string
+		wantErr      bool
+		validateFunc func(*testing.T, *Config)
+	}{
+		{
+			name:       "valid basic config",
+			configFile: "testdata/valid_config.yaml",
+			wantErr:    false,
+			validateFunc: func(t *testing.T, cfg *Config) {
+				require.Len(t, cfg.ServerGroups, 2)
 
-	if _, err := configFile.Write([]byte(configContent)); err != nil {
-		t.Fatalf("Failed to write to temp config file: %v", err)
-	}
-	configFile.Close()
+				// Verify first server group
+				require.Equal(t, "loki1", cfg.ServerGroups[0].Name)
+				require.Equal(t, "http://loki1.example.com", cfg.ServerGroups[0].URL)
+				require.Equal(t, 10, cfg.ServerGroups[0].Timeout)
+				require.Equal(t, "Bearer token1", cfg.ServerGroups[0].Headers["Authorization"])
 
-	// Load configuration
-	cfg, err := LoadConfig(configFile.Name())
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
+				// Verify second server group
+				require.Equal(t, "loki2", cfg.ServerGroups[1].Name)
+				require.Equal(t, "http://loki2.example.com", cfg.ServerGroups[1].URL)
+				require.Equal(t, 15, cfg.ServerGroups[1].Timeout)
+
+				// Verify logging config
+				require.Equal(t, "info", cfg.Logging.Level)
+				require.Equal(t, "json", cfg.Logging.Format)
+			},
+		},
+		{
+			name:       "minimal config",
+			configFile: "testdata/minimal_config.yaml",
+			wantErr:    false,
+			validateFunc: func(t *testing.T, cfg *Config) {
+				require.Len(t, cfg.ServerGroups, 1)
+
+				require.Equal(t, "loki1", cfg.ServerGroups[0].Name)
+				require.Equal(t, "http://localhost:3100", cfg.ServerGroups[0].URL)
+				require.Equal(t, 0, cfg.ServerGroups[0].Timeout) // Default not set in config
+			},
+		},
+		{
+			name:       "full config with TLS",
+			configFile: "testdata/full_config.yaml",
+			wantErr:    false,
+			validateFunc: func(t *testing.T, cfg *Config) {
+				require.Len(t, cfg.ServerGroups, 2)
+
+				// Verify first server group with full TLS config
+				require.Equal(t, "loki-production", cfg.ServerGroups[0].Name)
+				require.Equal(t, "https://loki.example.com", cfg.ServerGroups[0].URL)
+				require.Equal(t, 30, cfg.ServerGroups[0].Timeout)
+				require.Equal(t, "Bearer prod-token", cfg.ServerGroups[0].Headers["Authorization"])
+				require.Equal(t, "tenant-1", cfg.ServerGroups[0].Headers["X-Scope-OrgID"])
+
+				// Verify TLS config
+				require.False(t, cfg.ServerGroups[0].HTTPClientConfig.TLSConfig.InsecureSkipVerify)
+				require.Equal(t, "/etc/ssl/certs/ca.crt", cfg.ServerGroups[0].HTTPClientConfig.TLSConfig.CAFile)
+				require.Equal(t, "/etc/ssl/certs/client.crt", cfg.ServerGroups[0].HTTPClientConfig.TLSConfig.CertFile)
+				require.Equal(t, "/etc/ssl/private/client.key", cfg.ServerGroups[0].HTTPClientConfig.TLSConfig.KeyFile)
+
+				// Verify logging config
+				require.Equal(t, "debug", cfg.Logging.Level)
+				require.Equal(t, "logfmt", cfg.Logging.Format)
+			},
+		},
+		{
+			name:       "TLS config only",
+			configFile: "testdata/tls_config.yaml",
+			wantErr:    false,
+			validateFunc: func(t *testing.T, cfg *Config) {
+				require.Len(t, cfg.ServerGroups, 1)
+
+				require.Equal(t, "secure-loki", cfg.ServerGroups[0].Name)
+				require.Equal(t, "https://loki.secure.example.com", cfg.ServerGroups[0].URL)
+				require.Equal(t, "/path/to/ca.crt", cfg.ServerGroups[0].HTTPClientConfig.TLSConfig.CAFile)
+
+				require.Equal(t, "warn", cfg.Logging.Level)
+			},
+		},
+		{
+			name:       "invalid empty config",
+			configFile: "testdata/invalid_empty.yaml",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid syntax",
+			configFile: "testdata/invalid_syntax.yaml",
+			wantErr:    true,
+		},
+		{
+			name:       "non-existent file",
+			configFile: "testdata/does_not_exist.yaml",
+			wantErr:    true,
+		},
 	}
 
-	// Verify the loaded configuration
-	if len(cfg.ServerGroups) != 2 {
-		t.Errorf("Expected 2 server groups, got %d", len(cfg.ServerGroups))
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := LoadConfig(tt.configFile)
 
-	if cfg.ServerGroups[0].Name != "loki1" {
-		t.Errorf("Expected first server group name to be 'loki1', got '%s'", cfg.ServerGroups[0].Name)
-	}
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
 
-	if cfg.ServerGroups[1].URL != "http://loki2.example.com" {
-		t.Errorf("Expected second server group URL to be 'http://loki2.example.com', got '%s'", cfg.ServerGroups[1].URL)
-	}
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
 
-	if cfg.Logging.Level != "info" {
-		t.Errorf("Expected logging level to be 'info', got '%s'", cfg.Logging.Level)
-	}
-
-	if cfg.Logging.Format != "json" {
-		t.Errorf("Expected logging format to be 'json', got '%s'", cfg.Logging.Format)
+			if tt.validateFunc != nil {
+				tt.validateFunc(t, cfg)
+			}
+		})
 	}
 }

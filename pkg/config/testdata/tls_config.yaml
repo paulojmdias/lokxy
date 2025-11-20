@@ -1,0 +1,13 @@
+server_groups:
+  - name: secure-loki
+    url: https://loki.secure.example.com
+    timeout: 30
+    http_client_config:
+      dial_timeout: 5s
+      tls_config:
+        ca_file: /path/to/ca.crt
+        cert_file: /path/to/client.crt
+        key_file: /path/to/client.key
+logging:
+  level: warn
+  format: json
