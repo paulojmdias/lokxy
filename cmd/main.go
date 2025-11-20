@@ -151,15 +151,15 @@ func main() {
 	defer cancel()
 
 	if err := proxyServer.Shutdown(shutdownCtx); err != nil {
-		level.Info(logger).Log("msg", "Proxy server forced to shutdown", "err", err)
+		level.Error(logger).Log("msg", "Proxy server forced to shutdown", "err", err)
 	}
 
 	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-		level.Info(logger).Log("msg", "Metrics server forced to shutdown", "err", err)
+		level.Error(logger).Log("msg", "Metrics server forced to shutdown", "err", err)
 	}
 
 	if err := eg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-		level.Info(logger).Log("msg", "Error during the shutdown", "err", err)
+		level.Error(logger).Log("msg", "Error during the shutdown", "err", err)
 	}
 
 	// Shutdown OTEL related services
