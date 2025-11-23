@@ -3,9 +3,11 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 )
 
@@ -37,10 +39,27 @@ type LoggerConfig struct {
 	Format string `yaml:"format"`
 }
 
+// QueryRangeConfig holds configuration for the query_range endpoint
+type QueryRangeConfig struct {
+	Step string `yaml:"step"` // Step duration to force on backend queries (e.g., "1m", "60s")
+}
+
+// VolumeRangeConfig holds configuration for the volume_range endpoint
+type VolumeRangeConfig struct {
+	Step string `yaml:"step"` // Step duration to force on backend queries (e.g., "1m", "60s")
+}
+
+// APIConfig holds configuration for API endpoint behavior
+type APIConfig struct {
+	QueryRange  QueryRangeConfig  `yaml:"query_range"`
+	VolumeRange VolumeRangeConfig `yaml:"volume_range"`
+}
+
 // Config represents the overall proxy configuration
 type Config struct {
 	ServerGroups []ServerGroup `yaml:"server_groups"`
 	Logging      LoggerConfig  `yaml:"logging"`
+	API          APIConfig     `yaml:"api"`
 }
 
 // LoadConfig loads and parses the YAML configuration file
@@ -79,6 +98,44 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate API configuration
+	if err := c.API.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Validate checks if the API configuration is valid
+func (a *APIConfig) Validate() error {
+	if a.QueryRange.Step != "" {
+		if err := validateStepDuration(a.QueryRange.Step); err != nil {
+			return fmt.Errorf("api.query_range.step: %w", err)
+		}
+	}
+
+	if a.VolumeRange.Step != "" {
+		if err := validateStepDuration(a.VolumeRange.Step); err != nil {
+			return fmt.Errorf("api.volume_range.step: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// validateStepDuration validates a step duration string
+// Accepts Prometheus-style duration (e.g., "1m", "30s", "1h", "1d", "1w")
+// Note: Loki does not support milliseconds (ms) for step parameter
+func validateStepDuration(step string) error {
+	// Loki does not support milliseconds
+	if strings.Contains(step, "ms") {
+		return fmt.Errorf("invalid step duration %q: milliseconds (ms) not supported by Loki", step)
+	}
+
+	_, err := model.ParseDuration(step)
+	if err != nil {
+		return fmt.Errorf("invalid step duration %q: %w", step, err)
+	}
 	return nil
 }
 

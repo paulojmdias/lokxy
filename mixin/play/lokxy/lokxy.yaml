@@ -13,3 +13,10 @@ server_groups:
 logging:
   level: "info"
   format: "json"
+
+# API endpoint configuration
+# api:
+#   query_range:
+#     step: "1m"   # Force step parameter for query_range endpoint
+#   volume_range:
+#     step: "1m"   # Force step parameter for volume_range endpoint

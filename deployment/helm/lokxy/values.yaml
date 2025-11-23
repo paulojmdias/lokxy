@@ -94,6 +94,11 @@ config: |
   logging:
     level: "info"
     format: "json"
+  # api:
+  #   query_range:
+  #     step: "1m"   # Force step parameter for query_range endpoint
+  #   volume_range:
+  #     step: "1m"   # Force step parameter for volume_range endpoint
 
 # -- Kubernetes Service configuration for exposing the Lokxy application
 service:
