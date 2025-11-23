@@ -351,6 +351,12 @@ func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, 
 			level.Error(logger).Log("msg", "Failed to close response body", "err", err)
 		}
 	}
+
+	// If no responses were received from any upstream, return an error
+	if !forwarded {
+		level.Error(logger).Log("msg", "No healthy upstreams available")
+		http.Error(w, "No healthy upstreams available", http.StatusBadGateway)
+	}
 }
 
 // extractDetectedFieldName returns the {name} segment from

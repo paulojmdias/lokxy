@@ -358,3 +358,19 @@ func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Equal(t, 1, called)
 }
+
+func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	// Use an unreachable URL that will fail to connect
+	cfg := mkConfig("http://127.0.0.1:1") // Port 1 is unlikely to be listening
+	rr := httptest.NewRecorder()
+	// Use a path that falls through to forwardFirstResponse
+	req := httptest.NewRequest(http.MethodGet, "/some/unknown/path", nil)
+
+	ProxyHandler(cfg, logger)(rr, req)
+
+	// Should return 502 Bad Gateway when no upstreams respond
+	require.Equal(t, http.StatusBadGateway, rr.Code)
+	require.Contains(t, rr.Body.String(), "No healthy upstreams available")
+}
