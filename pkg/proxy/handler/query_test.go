@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,10 +40,10 @@ func TestHandleLokiQueries_StreamResult(t *testing.T) {
 		}
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -81,10 +82,10 @@ func TestHandleLokiQueries_MatrixResult(t *testing.T) {
 		}
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -124,10 +125,10 @@ func TestHandleLokiQueries_VectorResult(t *testing.T) {
 		}
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -178,11 +179,11 @@ func TestHandleLokiQueries_MultipleStreamResponses(t *testing.T) {
 		}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, respBody := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(respBody)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -214,10 +215,10 @@ func TestHandleLokiQueries_WithEncodingFlags(t *testing.T) {
 		}
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -253,10 +254,10 @@ func TestHandleLokiQueries_WithStructuredMetadata(t *testing.T) {
 		}
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -283,10 +284,10 @@ func TestHandleLokiQueries_EmptyResult(t *testing.T) {
 		}
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -308,10 +309,10 @@ func TestHandleLokiQueries_EmptyResult(t *testing.T) {
 func TestHandleLokiQueries_InvalidJSON(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString("invalid json")
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -333,11 +334,11 @@ func TestHandleLokiQueries_InvalidJSON(t *testing.T) {
 func TestHandleLokiQueries_ResponseReaderError(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
-	results <- &http.Response{
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	results <- wrapResponse(&http.Response{
 		StatusCode: 200,
 		Body:       &failingQueryReader{},
-	}
+	})
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -359,7 +360,7 @@ func TestHandleLokiQueries_ResponseReaderError(t *testing.T) {
 func TestHandleLokiQueries_PartialFailure(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 3)
+	results := make(chan *proxyresponse.BackendResponse, 3)
 
 	// Valid response
 	rec1 := httptest.NewRecorder()
@@ -371,12 +372,12 @@ func TestHandleLokiQueries_PartialFailure(t *testing.T) {
 			"stats": {}
 		}
 	}`)
-	results <- rec1.Result()
+	results <- wrapResponse(rec1.Result())
 
 	// Invalid JSON
 	rec2 := httptest.NewRecorder()
 	rec2.WriteString("invalid json")
-	results <- rec2.Result()
+	results <- wrapResponse(rec2.Result())
 
 	// Valid response
 	rec3 := httptest.NewRecorder()
@@ -388,7 +389,7 @@ func TestHandleLokiQueries_PartialFailure(t *testing.T) {
 			"stats": {}
 		}
 	}`)
-	results <- rec3.Result()
+	results <- wrapResponse(rec3.Result())
 
 	close(results)
 
@@ -410,7 +411,7 @@ func TestHandleLokiQueries_PartialFailure(t *testing.T) {
 func TestHandleLokiQueries_NoResponses(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response)
+	results := make(chan *proxyresponse.BackendResponse)
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -452,11 +453,11 @@ func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
 		}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, respBody := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(respBody)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,10 +20,10 @@ func TestHandleLokiLabels_SingleResponse(t *testing.T) {
 		"data": ["app", "environment", "instance", "job"]
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -46,11 +47,11 @@ func TestHandleLokiLabels_MultipleResponses(t *testing.T) {
 		`{"status": "success", "data": ["cluster", "environment"]}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, respBody := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(respBody)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -83,10 +84,10 @@ func TestHandleLokiLabels_EmptyResponse(t *testing.T) {
 
 	body := `{"status": "success", "data": []}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -104,10 +105,10 @@ func TestHandleLokiLabels_EmptyResponse(t *testing.T) {
 func TestHandleLokiLabels_InvalidJSON(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString("invalid json")
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -126,11 +127,11 @@ func TestHandleLokiLabels_InvalidJSON(t *testing.T) {
 func TestHandleLokiLabels_ResponseReaderError(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
-	results <- &http.Response{
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	results <- wrapResponse(&http.Response{
 		StatusCode: 200,
 		Body:       &failingLabelsReader{},
-	}
+	})
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -156,11 +157,11 @@ func TestHandleLokiLabels_DuplicateLabelsAcrossBackends(t *testing.T) {
 		`{"status": "success", "data": ["app", "job"]}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, respBody := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(respBody)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -183,22 +184,22 @@ func TestHandleLokiLabels_DuplicateLabelsAcrossBackends(t *testing.T) {
 func TestHandleLokiLabels_PartialFailure(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 3)
+	results := make(chan *proxyresponse.BackendResponse, 3)
 
 	// Valid response
 	rec1 := httptest.NewRecorder()
 	rec1.WriteString(`{"status": "success", "data": ["app", "job"]}`)
-	results <- rec1.Result()
+	results <- wrapResponse(rec1.Result())
 
 	// Invalid JSON
 	rec2 := httptest.NewRecorder()
 	rec2.WriteString("invalid json")
-	results <- rec2.Result()
+	results <- wrapResponse(rec2.Result())
 
 	// Valid response
 	rec3 := httptest.NewRecorder()
 	rec3.WriteString(`{"status": "success", "data": ["region", "cluster"]}`)
-	results <- rec3.Result()
+	results <- wrapResponse(rec3.Result())
 
 	close(results)
 

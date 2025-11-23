@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,10 +38,10 @@ func TestHandleLokiStats_SingleResponse(t *testing.T) {
 		"entries": 50000
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -63,11 +64,11 @@ func TestHandleLokiStats_MultipleResponses(t *testing.T) {
 		`{"streams": 30, "chunks": 300, "bytes": 3000, "entries": 1500}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, respBody := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(respBody)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -88,10 +89,10 @@ func TestHandleLokiStats_EmptyStats(t *testing.T) {
 
 	body := `{"streams": 0, "chunks": 0, "bytes": 0, "entries": 0}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -108,10 +109,10 @@ func TestHandleLokiStats_EmptyStats(t *testing.T) {
 func TestHandleLokiStats_InvalidJSON(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString("invalid json")
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -129,11 +130,11 @@ func TestHandleLokiStats_InvalidJSON(t *testing.T) {
 func TestHandleLokiStats_ResponseReaderError(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
-	results <- &http.Response{
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	results <- wrapResponse(&http.Response{
 		StatusCode: 200,
 		Body:       &failingStatsReader{},
-	}
+	})
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -151,22 +152,22 @@ func TestHandleLokiStats_ResponseReaderError(t *testing.T) {
 func TestHandleLokiStats_PartialFailure(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 3)
+	results := make(chan *proxyresponse.BackendResponse, 3)
 
 	// Valid response
 	rec1 := httptest.NewRecorder()
 	rec1.WriteString(`{"streams": 10, "chunks": 100, "bytes": 1000, "entries": 500}`)
-	results <- rec1.Result()
+	results <- wrapResponse(rec1.Result())
 
 	// Invalid JSON
 	rec2 := httptest.NewRecorder()
 	rec2.WriteString("invalid json")
-	results <- rec2.Result()
+	results <- wrapResponse(rec2.Result())
 
 	// Valid response
 	rec3 := httptest.NewRecorder()
 	rec3.WriteString(`{"streams": 20, "chunks": 200, "bytes": 2000, "entries": 1000}`)
-	results <- rec3.Result()
+	results <- wrapResponse(rec3.Result())
 
 	close(results)
 
@@ -192,10 +193,10 @@ func TestHandleLokiStats_LargeNumbers(t *testing.T) {
 		"entries": 500000000
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -218,11 +219,11 @@ func TestHandleLokiStats_MixedZeroAndNonZero(t *testing.T) {
 		`{"streams": 0, "chunks": 0, "bytes": 0, "entries": 0}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, respBody := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(respBody)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -241,7 +242,7 @@ func TestHandleLokiStats_MixedZeroAndNonZero(t *testing.T) {
 func TestHandleLokiStats_NoResponses(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response)
+	results := make(chan *proxyresponse.BackendResponse)
 	close(results)
 
 	w := httptest.NewRecorder()

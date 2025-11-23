@@ -9,12 +9,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
-func HandleLokiLabels(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiLabels(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	mergedLabelValues := make(map[string]struct{})
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		bodyBytes, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
