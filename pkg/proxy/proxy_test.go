@@ -439,5 +439,8 @@ func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 
 	// Should return 502 Bad Gateway when no upstreams respond
 	require.Equal(t, http.StatusBadGateway, rr.Code)
-	require.Contains(t, rr.Body.String(), "No healthy upstreams available")
+	// With fail-fast error handling, connection errors are reported with backend context
+	responseBody := rr.Body.String()
+	require.Contains(t, responseBody, "sg1:")
+	require.Contains(t, responseBody, "connection refused")
 }
