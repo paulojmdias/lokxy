@@ -116,12 +116,12 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 				metadata := make(map[string]any)
 
 				// Add structuredMetadata if it exists
-				if len(entry.StructuredMetadata) > 0 {
+				if entry.StructuredMetadata.Len() > 0 {
 					metadata["structuredMetadata"] = entry.StructuredMetadata
 				}
 
 				// Add parsed if it exists
-				if len(entry.Parsed) > 0 {
+				if entry.Parsed.Len() > 0 {
 					metadata["parsed"] = entry.Parsed
 				}
 
