@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -38,17 +37,17 @@ func TestInitTracer(t *testing.T) {
 	if err != nil {
 		t.Logf("InitTracer failed (expected in test env): %v", err)
 
-		assert.Contains(t, err.Error(), "connection")
+		require.Contains(t, err.Error(), "connection")
 		return
 	}
 
 	require.NotNil(t, tracerProvider)
 
 	globalProvider := otel.GetTracerProvider()
-	assert.NotNil(t, globalProvider)
+	require.NotNil(t, globalProvider)
 
 	propagator := otel.GetTextMapPropagator()
-	assert.NotNil(t, propagator)
+	require.NotNil(t, propagator)
 
 	defer func() {
 		if tracerProvider != nil {
@@ -74,7 +73,7 @@ func TestInitTracerWithInvalidEndpoint(t *testing.T) {
 
 	if err != nil {
 		t.Logf("Got expected error with malformed endpoint: %v", err)
-		assert.Error(t, err)
+		require.Error(t, err)
 	} else {
 		t.Log("OTLP exporter was lenient with malformed endpoint")
 		if tracerProvider != nil {
@@ -104,7 +103,7 @@ func TestInitTracerWithEmptyEndpoint(t *testing.T) {
 		require.NotNil(t, tracerProvider)
 
 		globalProvider := otel.GetTracerProvider()
-		assert.NotNil(t, globalProvider)
+		require.NotNil(t, globalProvider)
 
 		tracerProvider.Shutdown(ctx)
 	}
@@ -145,7 +144,7 @@ func TestInitTracerConfiguration(t *testing.T) {
 	}
 
 	propagator := otel.GetTextMapPropagator()
-	assert.NotNil(t, propagator)
+	require.NotNil(t, propagator)
 
 	// Test that propagator works (basic smoke test)
 	ctx2 := context.Background()
@@ -153,7 +152,7 @@ func TestInitTracerConfiguration(t *testing.T) {
 	propagator.Inject(ctx2, propagation.MapCarrier(headers))
 
 	extractedCtx := propagator.Extract(ctx2, propagation.MapCarrier(headers))
-	assert.NotNil(t, extractedCtx)
+	require.NotNil(t, extractedCtx)
 }
 
 func TestCreateSpan(t *testing.T) {
@@ -170,16 +169,16 @@ func TestCreateSpan(t *testing.T) {
 
 	newCtx, span := CreateSpan(ctx, spanName)
 
-	assert.NotNil(t, span)
-	assert.NotEqual(t, ctx, newCtx)
+	require.NotNil(t, span)
+	require.NotEqual(t, ctx, newCtx)
 	span.End()
 
 	spans := exporter.GetSpans()
 	require.Len(t, spans, 1)
 
 	recordedSpan := spans[0]
-	assert.Equal(t, spanName, recordedSpan.Name)
-	assert.Equal(t, "lokxy", recordedSpan.InstrumentationScope.Name)
+	require.Equal(t, spanName, recordedSpan.Name)
+	require.Equal(t, "lokxy", recordedSpan.InstrumentationScope.Name)
 }
 
 func TestExtractTraceFromHTTPRequest(t *testing.T) {
@@ -204,8 +203,8 @@ func TestExtractTraceFromHTTPRequest(t *testing.T) {
 	extractedCtx := ExtractTraceFromHTTPRequest(req)
 
 	extractedSpanCtx := trace.SpanContextFromContext(extractedCtx)
-	assert.True(t, extractedSpanCtx.IsValid())
-	assert.Equal(t, spanCtx.TraceID(), extractedSpanCtx.TraceID())
+	require.True(t, extractedSpanCtx.IsValid())
+	require.Equal(t, spanCtx.TraceID(), extractedSpanCtx.TraceID())
 
 	span.End()
 }
@@ -229,7 +228,7 @@ func TestInjectTraceToHTTPRequest(t *testing.T) {
 	InjectTraceToHTTPRequest(spanCtx, req)
 
 	traceParent := req.Header.Get("traceparent")
-	assert.NotEmpty(t, traceParent)
+	require.NotEmpty(t, traceParent)
 
 	span.End()
 }
@@ -261,15 +260,15 @@ func TestHTTPTracesHandler(t *testing.T) {
 	rr := httptest.NewRecorder()
 	tracedHandler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "OK", rr.Body.String())
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "OK", rr.Body.String())
 
 	spans := exporter.GetSpans()
 	require.Len(t, spans, 1)
 
 	span := spans[0]
-	assert.Equal(t, "GET /api/test", span.Name)
-	assert.Equal(t, codes.Ok, span.Status.Code)
+	require.Equal(t, "GET /api/test", span.Name)
+	require.Equal(t, codes.Ok, span.Status.Code)
 
 	attrs := span.Attributes
 	attrMap := make(map[string]any)
@@ -277,16 +276,16 @@ func TestHTTPTracesHandler(t *testing.T) {
 		attrMap[string(attr.Key)] = attr.Value.AsInterface()
 	}
 
-	assert.Equal(t, "GET", attrMap["http.request.method"])
-	assert.Contains(t, attrMap["url.full"], "/api/test")
-	assert.Equal(t, "test-agent", attrMap["user_agent.original"])
-	assert.Equal(t, int64(200), attrMap["http.response.status_code"])
-	assert.Equal(t, "test-request-123", attrMap["http.request.header.x-request-id"])
+	require.Equal(t, "GET", attrMap["http.request.method"])
+	require.Contains(t, attrMap["url.full"], "/api/test")
+	require.Equal(t, "test-agent", attrMap["user_agent.original"])
+	require.Equal(t, int64(200), attrMap["http.response.status_code"])
+	require.Equal(t, "test-request-123", attrMap["http.request.header.x-request-id"])
 
 	duration, exists := attrMap["http.request_duration_ms"]
-	assert.True(t, exists)
-	assert.IsType(t, float64(0), duration)
-	assert.Greater(t, duration.(float64), 0.0)
+	require.True(t, exists)
+	require.IsType(t, float64(0), duration)
+	require.Greater(t, duration.(float64), 0.0)
 }
 
 func TestHTTPTracesHandlerWithError(t *testing.T) {
@@ -309,15 +308,15 @@ func TestHTTPTracesHandlerWithError(t *testing.T) {
 
 	tracedHandler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
 
 	spans := exporter.GetSpans()
 	require.Len(t, spans, 1)
 
 	span := spans[0]
-	assert.Equal(t, "POST /api/error", span.Name)
-	assert.Equal(t, codes.Error, span.Status.Code)
-	assert.Equal(t, "HTTP 500", span.Status.Description)
+	require.Equal(t, "POST /api/error", span.Name)
+	require.Equal(t, codes.Error, span.Status.Code)
+	require.Equal(t, "HTTP 500", span.Status.Description)
 }
 
 func TestResponseWriter(t *testing.T) {
@@ -325,15 +324,15 @@ func TestResponseWriter(t *testing.T) {
 	rw := &responseWriter{ResponseWriter: rr, statusCode: http.StatusOK}
 
 	rw.WriteHeader(http.StatusCreated)
-	assert.Equal(t, http.StatusCreated, rw.statusCode)
-	assert.Equal(t, http.StatusCreated, rr.Code)
+	require.Equal(t, http.StatusCreated, rw.statusCode)
+	require.Equal(t, http.StatusCreated, rr.Code)
 
 	data := []byte("test response")
 	n, err := rw.Write(data)
 
 	require.NoError(t, err)
-	assert.Equal(t, len(data), n)
-	assert.Equal(t, string(data), rr.Body.String())
+	require.Equal(t, len(data), n)
+	require.Equal(t, string(data), rr.Body.String())
 }
 
 func TestResponseWriterDefaultStatusCode(t *testing.T) {
@@ -342,7 +341,7 @@ func TestResponseWriterDefaultStatusCode(t *testing.T) {
 	data := []byte("test")
 	rw.Write(data)
 
-	assert.Equal(t, http.StatusOK, rw.statusCode)
+	require.Equal(t, http.StatusOK, rw.statusCode)
 }
 
 func testResource() *resource.Resource {
