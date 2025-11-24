@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -67,6 +68,7 @@ func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	if resp.Header.Get("Content-Encoding") == "gzip" {
 		gzReader, err := gzip.NewReader(resp.Body)
 		if err != nil {
+			resp.Body.Close()
 			return nil, err
 		}
 		resp.Body = io.NopCloser(gzReader) // Prevent early closure
@@ -109,9 +111,15 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
 
-	// Create HTTP transport with the custom TLS configuration
+	// Create HTTP transport with the custom TLS configuration and dial timeout
+	dialer := &net.Dialer{
+		Timeout: dialTimeout,
+	}
+
 	transport := &http.Transport{
-		TLSClientConfig: tlsConfig,
+		TLSClientConfig:   tlsConfig,
+		DialContext:       dialer.DialContext,
+		DisableKeepAlives: false,
 	}
 
 	client := &http.Client{
@@ -397,23 +405,40 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 
 // Forward the first valid response for non-query endpoints
 func forwardFirstResponse(w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+	forwarded := false
 	for backendResp := range results {
 		resp := backendResp.Response
-		// Directly copy all headers and body from Loki response to Grafana
-		for key, values := range resp.Header {
-			for _, value := range values {
-				w.Header().Add(key, value)
+		if !forwarded {
+			// Forward the first response
+			for key, values := range resp.Header {
+				for _, value := range values {
+					w.Header().Add(key, value)
+				}
+			}
+
+			w.Header().Set("Connection", "keep-alive")
+			w.WriteHeader(resp.StatusCode)
+			if _, err := io.Copy(w, resp.Body); err != nil {
+				level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
+			}
+			forwarded = true
+		} else {
+			// Drain the body of non-forwarded responses to prevent connection leaks
+			if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+				level.Error(logger).Log("msg", "Failed to drain response body", "err", err)
 			}
 		}
 
-		w.Header().Set("Connection", "keep-alive")
-		w.WriteHeader(resp.StatusCode)
-		_, err := io.Copy(w, resp.Body) // Forward the body as-is
-		if err != nil {
-			level.Error(logger).Log("msg", "Failed to copy response body", "err", err)
-			return
+		// Close all response bodies to prevent resource leaks
+		if err := resp.Body.Close(); err != nil {
+			level.Error(logger).Log("msg", "Failed to close response body", "err", err)
 		}
-		resp.Body.Close()
+	}
+
+	// If no responses were received from any upstream, return an error
+	if !forwarded {
+		level.Error(logger).Log("msg", "No healthy upstreams available")
+		http.Error(w, "No healthy upstreams available", http.StatusBadGateway)
 	}
 }
 
