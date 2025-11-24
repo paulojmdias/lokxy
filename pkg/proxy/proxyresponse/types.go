@@ -28,7 +28,6 @@ func ForwardBackendError(w http.ResponseWriter, backendName string, statusCode i
 		"msg", "Forwarding backend error to client",
 		"backend", backendName,
 		"status", statusCode,
-		"body", string(bodyBytes),
 	)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
