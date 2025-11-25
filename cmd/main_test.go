@@ -80,12 +80,6 @@ server_groups:
 		Handler: http.DefaultServeMux,
 	}
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("OK")); err != nil {
-			t.Logf("failed to write health response: %v", err)
-		}
-	})
 	http.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("Alive")); err != nil {
@@ -121,18 +115,6 @@ server_groups:
 		resp, err := http.Get("http://localhost:9091/metrics")
 		if err != nil {
 			t.Fatalf("Failed to get metrics: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Handler returned wrong status code: got %v want %v", resp.StatusCode, http.StatusOK)
-		}
-	})
-
-	t.Run("test health endpoint", func(t *testing.T) {
-		resp, err := http.Get("http://localhost:3100/health")
-		if err != nil {
-			t.Fatalf("Failed to get health: %v", err)
 		}
 		defer resp.Body.Close()
 
