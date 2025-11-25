@@ -303,6 +303,7 @@ func TestProxy_DetectedFieldValues_UpstreamFailure(t *testing.T) {
 	// Should return error when backend fails (fail-fast behavior)
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	require.Equal(t, "sg1", rr.Header().Get("Failed-Backend"))
 	require.Contains(t, rr.Body.String(), errorBody)
 }
 
@@ -379,6 +380,10 @@ func TestProxy_AllBackendsFailWithError(t *testing.T) {
 	require.Contains(t, responseBody, errorBody)
 	// Should be plain text, not JSON
 	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	// Should have Failed-Backend header (either sg1 or sg2)
+	failedBackend := rr.Header().Get("Failed-Backend")
+	require.True(t, failedBackend == "sg1" || failedBackend == "sg2",
+		"Failed-Backend header should be sg1 or sg2 (got: %s)", failedBackend)
 }
 
 func TestProxy_AnyBackendFailure_ReturnsError(t *testing.T) {
@@ -404,6 +409,7 @@ func TestProxy_AnyBackendFailure_ReturnsError(t *testing.T) {
 	// Should return error when backend fails
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	require.Equal(t, "sg1", rr.Header().Get("Failed-Backend"))
 	require.Contains(t, rr.Body.String(), errorBody)
 }
 
@@ -420,6 +426,7 @@ func TestProxy_UnreachableBackend_ReturnsConnectionError(t *testing.T) {
 	// Should return 502 Bad Gateway for connection errors
 	require.Equal(t, http.StatusBadGateway, rr.Code)
 	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	require.Equal(t, "sg1", rr.Header().Get("Failed-Backend"))
 	// Response should include backend name and error message
 	responseBody := rr.Body.String()
 	require.Contains(t, responseBody, "sg1:")
@@ -439,6 +446,7 @@ func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 
 	// Should return 502 Bad Gateway when no upstreams respond
 	require.Equal(t, http.StatusBadGateway, rr.Code)
+	require.Equal(t, "sg1", rr.Header().Get("Failed-Backend"))
 	// With fail-fast error handling, connection errors are reported with backend context
 	responseBody := rr.Body.String()
 	require.Contains(t, responseBody, "sg1:")

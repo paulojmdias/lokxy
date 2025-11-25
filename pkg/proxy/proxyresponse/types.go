@@ -31,6 +31,7 @@ func ForwardBackendError(w http.ResponseWriter, backendName string, statusCode i
 	)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Failed-Backend", backendName)
 	w.WriteHeader(statusCode)
 
 	errorMessage := fmt.Sprintf("%s: %s", backendName, string(bodyBytes))
@@ -49,6 +50,7 @@ func ForwardConnectionError(w http.ResponseWriter, backendErr *BackendError, log
 	)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Failed-Backend", backendErr.BackendName)
 	w.WriteHeader(http.StatusBadGateway)
 
 	errorMessage := fmt.Sprintf("%s: %s", backendErr.BackendName, backendErr.Err.Error())
