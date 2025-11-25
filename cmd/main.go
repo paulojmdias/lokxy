@@ -93,7 +93,7 @@ func run(ctx context.Context, logger kitlog.Logger, cfg *config.Config, bindAddr
 	tracerProvider, err := traces.InitTracer(ctx)
 	if err != nil {
 		shutdownErr := meterProvider.Shutdown(ctx)
-        return fmt.Errorf("failed to initialize tracer: %w (meter shutdown error: %v)", err, shutdownErr)
+		return fmt.Errorf("failed to initialize tracer: %w (meter shutdown error: %v)", err, shutdownErr)
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
