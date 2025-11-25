@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/go-kit/log v0.2.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/loki/v3 v3.6.0
+	github.com/grafana/loki/v3 v3.6.1
 	github.com/prometheus/client_golang v1.23.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.38.0
