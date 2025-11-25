@@ -22,9 +22,16 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
+	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+)
+
+// Paths that support the step parameter
+const (
+	pathQueryRange  = "/loki/api/v1/query_range"
+	pathVolumeRange = "/loki/api/v1/index/volume_range"
 )
 
 // Variable to hold the API routes and their corresponding handlers
@@ -201,10 +208,7 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 					return
 				}
 
-				targetURL := instance.URL + r.URL.Path
-				if r.URL.RawQuery != "" {
-					targetURL += "?" + r.URL.RawQuery
-				}
+				targetURL := buildTargetURL(instance.URL, r, config)
 
 				requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
 
@@ -301,6 +305,14 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 
 		if handlerFunc, ok := apiRoutes[path]; ok {
 			span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
+			// Add step info to context for query_range endpoints
+			stepConfig := getStepConfig(r, config)
+			if stepConfig.HasOverride && stepConfig.OriginalStep > 0 {
+				ctx = handler.WithStepInfo(ctx, handler.StepInfo{
+					OriginalStep:   stepConfig.OriginalStep,
+					ConfiguredStep: stepConfig.ConfiguredStep,
+				})
+			}
 			handlerFunc(ctx, w, results, logger)
 		} else if strings.HasPrefix(path, "/loki/api/v1/label/") && strings.HasSuffix(path, "/values") {
 			span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
@@ -379,4 +391,75 @@ func extractDetectedFieldName(path string) (string, bool) {
 		name = segment
 	}
 	return name, true
+}
+
+// StepConfig holds step configuration for a request
+type StepConfig struct {
+	OriginalStep   time.Duration
+	ConfiguredStep time.Duration
+	HasOverride    bool
+}
+
+// getStepConfig extracts step configuration for the request
+func getStepConfig(r *http.Request, config *cfg.Config) StepConfig {
+	path := r.URL.Path
+	result := StepConfig{}
+
+	// Determine configured step based on path
+	var configuredStepStr string
+	switch path {
+	case pathQueryRange:
+		configuredStepStr = config.API.QueryRange.Step
+	case pathVolumeRange:
+		configuredStepStr = config.API.VolumeRange.Step
+	}
+
+	// Parse configured step
+	if configuredStepStr != "" {
+		if d, err := model.ParseDuration(configuredStepStr); err == nil {
+			result.ConfiguredStep = time.Duration(d)
+			result.HasOverride = true
+		}
+	}
+
+	// Parse original step from request
+	originalStepStr := r.URL.Query().Get("step")
+	if originalStepStr != "" {
+		if d, err := model.ParseDuration(originalStepStr); err == nil {
+			result.OriginalStep = time.Duration(d)
+		}
+	}
+
+	return result
+}
+
+// buildTargetURL constructs the target URL for the upstream request,
+// injecting the configured step parameter if applicable.
+func buildTargetURL(instanceURL string, r *http.Request, config *cfg.Config) string {
+	path := r.URL.Path
+	targetURL := instanceURL + path
+
+	// Determine if we need to inject a step parameter
+	var configuredStep string
+	switch path {
+	case pathQueryRange:
+		configuredStep = config.API.QueryRange.Step
+	case pathVolumeRange:
+		configuredStep = config.API.VolumeRange.Step
+	}
+
+	// If no step is configured, just append the original query string
+	if configuredStep == "" {
+		if r.URL.RawQuery != "" {
+			targetURL += "?" + r.URL.RawQuery
+		}
+		return targetURL
+	}
+
+	// Parse query parameters and inject/override step
+	query := r.URL.Query()
+	query.Set("step", configuredStep)
+	targetURL += "?" + query.Encode()
+
+	return targetURL
 }
