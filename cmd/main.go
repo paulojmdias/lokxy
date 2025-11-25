@@ -86,13 +86,6 @@ func main() {
 	// Set up Lokxy proxy server
 	//
 	proxyMux := http.NewServeMux()
-	// Register health check endpoint
-	proxyMux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("OK - Prometheus metrics enabled")); err != nil {
-			log.Printf("failed to write response in /health handler: %v", err)
-		}
-	})
 
 	// Liveness probe endpoint
 	proxyMux.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
