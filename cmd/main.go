@@ -20,7 +20,6 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -85,7 +84,7 @@ func run(ctx context.Context, logger kitlog.Logger, cfg *config.Config, bindAddr
 	}()
 
 	// Initialize Prometheus metrics provider
-	meterProvider, err := metrics.InitMetrics(ctx)
+	meterProvider, err := metrics.Initialize(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Prometheus metrics: %w", err)
 	}
@@ -98,7 +97,7 @@ func run(ctx context.Context, logger kitlog.Logger, cfg *config.Config, bindAddr
 
 	eg, ctx := errgroup.WithContext(ctx)
 	// Set up Prometheus metrics server
-	metricsServer := newMetricsServer()
+	metricsServer := &http.Server{Handler: metrics.NewServeMux()}
 
 	// Start the metrics server
 	eg.Go(func() error {
@@ -193,10 +192,4 @@ func newProxyServer(logger kitlog.Logger, cfg *config.Config) *http.Server {
 	proxyMux.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
 	proxyServer := &http.Server{Handler: traces.HTTPTracesHandler(logger)(proxyMux)}
 	return proxyServer
-}
-
-func newMetricsServer() *http.Server {
-	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", promhttp.Handler())
-	return &http.Server{Handler: metricsMux}
 }
