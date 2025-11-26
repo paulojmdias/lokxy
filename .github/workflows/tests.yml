@@ -20,7 +20,12 @@ jobs:
           go-version: "1.25"
       - name: install dependencies
         run: make lint-install
-      - name: Test
-        run: make test
       - name: Lint
         run: make lint
+      - name: Test
+        run: make test
+      - name: upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
