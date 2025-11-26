@@ -129,6 +129,7 @@ server_groups:
 		}))
 		defer backend.Close()
 		cfg.ServerGroups[0].URL = backend.URL
+		cfg.ServerGroups[1].URL = backend.URL
 
 		req, err := http.NewRequest("GET", "http://localhost:3100/", nil)
 		if err != nil {
