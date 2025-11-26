@@ -20,7 +20,7 @@ clean:
 
 .PHONY: test
 test:
-	GO111MODULE=on $(GO) test -race -mod=mod -tags netgo,builtinassets ./...
+	GO111MODULE=on $(GO) test -race -mod=mod -coverpkg=./... -covermode=atomic -coverprofile=coverage.out -tags netgo,builtinassets ./...
 
 .PHONY: run
 run:
