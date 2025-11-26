@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -28,13 +29,14 @@ type LokiDetectedLabelsResponse struct {
 }
 
 // HandleLokiDetectedLabels aggregates detected labels from multiple Loki instances
-func HandleLokiDetectedLabels(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiDetectedLabels(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_detected_labels")
 	defer span.End()
 
 	mergedLabels := make(map[string]int)
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		if resp == nil || resp.Body == nil {
 			_, responseSpan := traces.CreateSpan(ctx, "detected_labels.nil_response")
 			responseSpan.RecordError(io.ErrUnexpectedEOF)

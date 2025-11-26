@@ -10,10 +10,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/go-kit/log"
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,12 +87,12 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	orig := apiRoutes
 	defer func() { apiRoutes = orig }()
 
-	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
-		"/loki/api/v1/labels": func(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, _ log.Logger) {
+	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, log.Logger){
+		"/loki/api/v1/labels": func(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ log.Logger) {
 			count := 0
-			for resp := range results {
+			for backendResp := range results {
 				count++
-				_ = resp.Body.Close()
+				_ = backendResp.Response.Body.Close()
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"instances": count})
@@ -276,51 +278,33 @@ func TestProxy_UpstreamHeadersInjected(t *testing.T) {
 	require.Equal(t, "from-config", seen)
 }
 
-func TestProxy_DetectedFieldValues_PartialUpstreamFailure(t *testing.T) {
+func TestProxy_DetectedFieldValues_UpstreamFailure(t *testing.T) {
 	logger := log.NewNopLogger()
 	encoded := url.PathEscape("foo")
 	upPath := "/loki/api/v1/detected_field/" + encoded + "/values"
 
-	// Healthy upstream
+	errorBody := "upstream error"
+
+	// Broken upstream - any backend failure should cause the request to fail
 	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
 		upPath: func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"field":"ignored","values":[{"value":"X","count":2}]}`)
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, errorBody)
 		},
 	})
 	defer s1.Close()
 
-	// Broken upstream
-	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
-		upPath: func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			io.WriteString(w, `oops`)
-		},
-	})
-	defer s2.Close()
-
-	config := mkConfig(s1.URL, s2.URL)
+	config := mkConfig(s1.URL)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_field/"+encoded+"/values", nil)
 
 	ProxyHandler(config, logger)(rr, req)
-	require.Equal(t, http.StatusOK, rr.Code)
 
-	var out struct {
-		Field  string `json:"field"`
-		Values []struct {
-			Value string `json:"value"`
-			Count int    `json:"count"`
-		} `json:"values"`
-	}
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
-	require.Equal(t, "foo", out.Field)
-
-	got := map[string]int{}
-	for _, v := range out.Values {
-		got[v.Value] = v.Count
-	}
-	require.Equal(t, 2, got["X"])
+	// Should return error when backend fails (fail-fast behavior)
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	require.Equal(t, "sg1", rr.Header().Get("Failed-Backend"))
+	require.Contains(t, rr.Body.String(), errorBody)
 }
 
 func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
@@ -330,10 +314,10 @@ func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 	defer func() { apiRoutes = orig }()
 
 	called := 0
-	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
-		"/loki/api/v1/series": func(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, _ log.Logger) {
-			for resp := range results {
-				resp.Body.Close()
+	apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, log.Logger){
+		"/loki/api/v1/series": func(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ log.Logger) {
+			for backendResp := range results {
+				backendResp.Response.Body.Close()
 			}
 			called++
 			w.Header().Set("Content-Type", "application/json")
@@ -359,6 +343,96 @@ func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 	require.Equal(t, 1, called)
 }
 
+func TestProxy_AllBackendsFailWithError(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	errorBody := `{"status":"error","error":"parse error"}`
+
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, errorBody)
+		},
+	})
+	defer s1.Close()
+
+	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, errorBody)
+		},
+	})
+	defer s2.Close()
+
+	cfg := mkConfig(s1.URL, s2.URL)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query?query={}", nil)
+
+	ProxyHandler(cfg, logger)(rr, req)
+
+	// Should return error status from first backend
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	// Should use simple text format: {backend}: {error}
+	responseBody := rr.Body.String()
+	// Either sg1 or sg2 could respond first (race condition)
+	require.True(t, strings.HasPrefix(responseBody, "sg1:") || strings.HasPrefix(responseBody, "sg2:"),
+		"Response should start with backend name (got: %s)", responseBody)
+	require.Contains(t, responseBody, errorBody)
+	// Should be plain text, not JSON
+	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	// Should have Failed-Backend header (either sg1 or sg2)
+	failedBackend := rr.Header().Get("Failed-Backend")
+	require.True(t, failedBackend == "sg1" || failedBackend == "sg2",
+		"Failed-Backend header should be sg1 or sg2 (got: %s)", failedBackend)
+}
+
+func TestProxy_AnyBackendFailure_ReturnsError(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	errorBody := "backend error from sg2"
+
+	// Only failing backend - to ensure deterministic behavior
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, errorBody)
+		},
+	})
+	defer s1.Close()
+
+	cfg := mkConfig(s1.URL)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+
+	ProxyHandler(cfg, logger)(rr, req)
+
+	// Should return error when backend fails
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	require.Equal(t, "sg1", rr.Header().Get("Failed-Backend"))
+	require.Contains(t, rr.Body.String(), errorBody)
+}
+
+func TestProxy_UnreachableBackend_ReturnsConnectionError(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	// Use an invalid URL that will fail to connect
+	cfg := mkConfig("http://127.0.0.1:1") // Port 1 is unlikely to be listening
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+
+	ProxyHandler(cfg, logger)(rr, req)
+
+	// Should return 502 Bad Gateway for connection errors
+	require.Equal(t, http.StatusBadGateway, rr.Code)
+	require.Equal(t, "text/plain; charset=utf-8", rr.Header().Get("Content-Type"))
+	require.Equal(t, "sg1", rr.Header().Get("Failed-Backend"))
+	// Response should include backend name and error message
+	responseBody := rr.Body.String()
+	require.Contains(t, responseBody, "sg1:")
+	require.Contains(t, responseBody, "connection refused")
+}
+
 func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 	logger := log.NewNopLogger()
 
@@ -372,5 +446,9 @@ func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 
 	// Should return 502 Bad Gateway when no upstreams respond
 	require.Equal(t, http.StatusBadGateway, rr.Code)
-	require.Contains(t, rr.Body.String(), "No healthy upstreams available")
+	require.Equal(t, "sg1", rr.Header().Get("Failed-Backend"))
+	// With fail-fast error handling, connection errors are reported with backend context
+	responseBody := rr.Body.String()
+	require.Contains(t, responseBody, "sg1:")
+	require.Contains(t, responseBody, "connection refused")
 }

@@ -128,7 +128,11 @@ server_groups:
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer backend.Close()
-		cfg.ServerGroups[0].URL = backend.URL
+		// Update all server groups to use the test backend URL
+		// Otherwise unreachable backends will cause 502 errors
+		for i := range cfg.ServerGroups {
+			cfg.ServerGroups[i].URL = backend.URL
+		}
 
 		req, err := http.NewRequest("GET", "http://localhost:3100/", nil)
 		if err != nil {

@@ -11,10 +11,11 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats" // For statistics
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
 // Handle Loki query and query_range responses
-func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
 	var mergedVector loghttp.Vector
@@ -22,7 +23,8 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 	var mergedStats stats.Result
 	var encodingFlagsMap = make(map[string]struct{})
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		// Read the entire body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
