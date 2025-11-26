@@ -9,9 +9,8 @@ import (
 
 	"github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/logging"
-	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
-	"github.com/paulojmdias/lokxy/pkg/proxy"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestMainFunction(t *testing.T) {
@@ -51,64 +50,12 @@ server_groups:
 
 	logger := logging.ConfigureLogger(cfg.Logging)
 
-	// Initialize Prometheus metrics
-	ctx := context.Background()
-	meterProvider, err := metrics.Initialize(ctx)
-	if err != nil {
-		t.Fatalf("Failed to initialize Prometheus metrics: %v", err)
-	}
-	defer func() {
-		if err := meterProvider.Shutdown(ctx); err != nil {
-			t.Logf("Metrics shutdown error: %v", err)
-		}
-	}()
-
-	// Set up metrics server
-	metricsAddr := ":9091"
-	metricServer := http.NewServeMux()
-	metricServer.Handle("/metrics", promhttp.Handler())
-
-	go func() {
-		if err := http.ListenAndServe(metricsAddr, metricServer); err != nil && err != http.ErrServerClosed {
-			t.Errorf("Metrics server failed: %v", err)
-		}
-	}()
-
-	// Create main proxy server
-	proxyServer := &http.Server{
-		Addr:    ":3100",
-		Handler: http.DefaultServeMux,
-	}
-
-	http.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("Alive")); err != nil {
-			t.Logf("failed to write healthy response: %v", err)
-		}
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return run(ctx, logger, cfg, ":3100", ":9091")
 	})
-
-	http.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
-		if config.IsReady() {
-			w.WriteHeader(http.StatusOK)
-			if _, err := w.Write([]byte("OK")); err != nil {
-				t.Logf("failed to write readiness response: %v", err)
-			}
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			if _, err := w.Write([]byte("Not Ready")); err != nil {
-				t.Logf("failed to write readiness response: %v", err)
-			}
-		}
-	})
-
-	// Register the proxy handler
-	http.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
-
-	go func() {
-		if err := proxyServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			t.Errorf("Proxy server failed: %v", err)
-		}
-	}()
 
 	// Test cases
 	t.Run("test metrics endpoint", func(t *testing.T) {
@@ -186,8 +133,7 @@ server_groups:
 			t.Errorf("Expected ready status, got: %v", resp.StatusCode)
 		}
 	})
-
-	if err := proxyServer.Shutdown(ctx); err != nil {
-		t.Errorf("Failed to shutdown proxy server: %v", err)
-	}
+	cancel()
+	err = eg.Wait()
+	require.NoError(t, err)
 }
