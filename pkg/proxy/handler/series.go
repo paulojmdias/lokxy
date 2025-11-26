@@ -8,12 +8,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
-func HandleLokiSeries(_ context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiSeries(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	var mergedSeries []map[string]string // Assuming series is a map of labels
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		// Read the entire body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		resp.Body.Close()

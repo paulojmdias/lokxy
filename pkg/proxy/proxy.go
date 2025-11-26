@@ -22,13 +22,15 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 )
 
 // Variable to hold the API routes and their corresponding handlers
-var apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *http.Response, log.Logger){
+// All handlers use the same signature: BackendResponse channels
+var apiRoutes = map[string]func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, log.Logger){
 	"/loki/api/v1/query":              handler.HandleLokiQueries,
 	"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 	"/loki/api/v1/series":             handler.HandleLokiSeries,
@@ -156,8 +158,8 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 
 		level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
 
-		results := make(chan *http.Response, len(config.ServerGroups))
-		errors := make(chan error, len(config.ServerGroups))
+		results := make(chan *proxyresponse.BackendResponse, len(config.ServerGroups))
+		backendErrors := make(chan *proxyresponse.BackendError, len(config.ServerGroups))
 
 		// Read the original request body once
 		var bodyBytes []byte
@@ -231,7 +233,11 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 					}
 					level.Error(logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
 					select {
-					case errors <- err:
+					case backendErrors <- &proxyresponse.BackendError{
+						Err:         err,
+						BackendName: instance.Name,
+						BackendURL:  instance.URL,
+					}:
 					default:
 						level.Warn(logger).Log("msg", "Skipping send to closed errors channel")
 					}
@@ -264,7 +270,11 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 						))
 					}
 					level.Error(logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
-					errors <- err
+					backendErrors <- &proxyresponse.BackendError{
+						Err:         err,
+						BackendName: instance.Name,
+						BackendURL:  instance.URL,
+					}
 					return
 				}
 
@@ -286,29 +296,101 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 				}
 
 				select {
-				case results <- resp:
+				case results <- &proxyresponse.BackendResponse{
+					Response:    resp,
+					BackendName: instance.Name,
+					BackendURL:  instance.URL,
+				}:
 				default:
 					level.Warn(logger).Log("msg", "Skipping send to closed results channel")
 				}
 			}(instance)
 		}
 
-		go func() {
-			wg.Wait()
-			close(results)
-			close(errors)
-		}()
+		// Wait for all backend requests to complete
+		wg.Wait()
+		close(results)
+		close(backendErrors)
+
+		// Check for connection errors first (unreachable backends)
+		select {
+		case backendErr, ok := <-backendErrors:
+			if ok {
+				// Drain remaining channels to avoid goroutine leaks
+				go func() {
+					for remaining := range results {
+						if remaining.Response != nil && remaining.Response.Body != nil {
+							remaining.Response.Body.Close()
+						}
+					}
+				}()
+				go func() {
+					for range backendErrors { //nolint:revive // intentionally draining channel
+					}
+				}()
+				proxyresponse.ForwardConnectionError(w, backendErr, logger)
+				return
+			}
+			// Channel closed with no errors, continue processing
+		default:
+			// No connection errors, continue processing
+		}
+
+		// Check for any backend HTTP errors - fail fast if any backend returns an error
+		successResults := make(chan *proxyresponse.BackendResponse, len(config.ServerGroups))
+
+		for backendResp := range results {
+			resp := backendResp.Response
+
+			// Check for error response (non-2xx status code)
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				level.Error(logger).Log(
+					"msg", "Backend returned error response",
+					"backend", backendResp.BackendName,
+					"status", resp.StatusCode,
+				)
+
+				// Read error body and forward immediately
+				bodyBytes, err := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if err != nil {
+					level.Error(logger).Log(
+						"msg", "Failed to read error response body",
+						"backend", backendResp.BackendName,
+						"err", err,
+					)
+					bodyBytes = []byte("Failed to read error response")
+				}
+
+				// Drain remaining results to avoid goroutine leaks
+				go func() {
+					for remaining := range results {
+						if remaining.Response != nil && remaining.Response.Body != nil {
+							remaining.Response.Body.Close()
+						}
+					}
+				}()
+				close(successResults)
+
+				proxyresponse.ForwardBackendError(w, backendResp.BackendName, resp.StatusCode, bodyBytes, logger)
+				return
+			}
+
+			// Pass successful responses to handlers
+			successResults <- backendResp
+		}
+		close(successResults)
 
 		if handlerFunc, ok := apiRoutes[path]; ok {
 			span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
-			handlerFunc(ctx, w, results, logger)
+			handlerFunc(ctx, w, successResults, logger)
 		} else if strings.HasPrefix(path, "/loki/api/v1/label/") && strings.HasSuffix(path, "/values") {
 			span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
-			handler.HandleLokiLabels(ctx, w, results, logger)
+			handler.HandleLokiLabels(ctx, w, successResults, logger)
 		} else if strings.HasPrefix(path, "/loki/api/v1/detected_field/") && strings.HasSuffix(path, "/values") {
 			span.SetAttributes(attribute.String("proxy.route_type", "detected_field_values"))
 			if fieldName, ok := extractDetectedFieldName(path); ok {
-				handler.HandleLokiDetectedFieldValues(ctx, w, results, fieldName, logger)
+				handler.HandleLokiDetectedFieldValues(ctx, w, successResults, fieldName, logger)
 			}
 		} else if strings.HasPrefix(path, "/loki/api/v1/tail") {
 			span.SetAttributes(attribute.String("proxy.route_type", "websocket"))
@@ -316,15 +398,16 @@ func ProxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		} else {
 			span.SetAttributes(attribute.String("proxy.route_type", "first_response"))
 			level.Warn(logger).Log("msg", "No route matched, returning first response only")
-			forwardFirstResponse(w, results, logger)
+			forwardFirstResponse(w, successResults, logger)
 		}
 	}
 }
 
 // Forward the first valid response for non-query endpoints
-func forwardFirstResponse(w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func forwardFirstResponse(w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	forwarded := false
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		if !forwarded {
 			// Forward the first response
 			for key, values := range resp.Header {
