@@ -53,7 +53,7 @@ server_groups:
 
 	// Initialize Prometheus metrics
 	ctx := context.Background()
-	meterProvider, err := metrics.InitMetrics(ctx)
+	meterProvider, err := metrics.Initialize(ctx)
 	if err != nil {
 		t.Fatalf("Failed to initialize Prometheus metrics: %v", err)
 	}
