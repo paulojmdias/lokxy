@@ -110,7 +110,7 @@ func run(ctx context.Context, logger kitlog.Logger, cfg *config.Config, bindAddr
 	})
 
 	// Set up Lokxy proxy server
-	proxyServer := newProxyServer(logger, cfg)
+	proxyServer := &http.Server{Handler: traces.HTTPTracesHandler(logger)(proxy.NewServeMux(logger, cfg))}
 
 	// Start the proxy HTTP server
 	eg.Go(func() error {
@@ -160,36 +160,4 @@ func run(ctx context.Context, logger kitlog.Logger, cfg *config.Config, bindAddr
 
 	level.Info(logger).Log("msg", "Server exited")
 	return nil
-}
-
-func newProxyServer(logger kitlog.Logger, cfg *config.Config) *http.Server {
-	proxyMux := http.NewServeMux()
-
-	// Liveness probe endpoint
-	proxyMux.HandleFunc("/healthy", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("OK")); err != nil {
-			level.Error(logger).Log("msg", "Failed to write response in /healthy handler", "err", err)
-		}
-	})
-
-	// Readiness probe endpoint
-	proxyMux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
-		if config.IsReady() {
-			w.WriteHeader(http.StatusOK)
-			if _, err := w.Write([]byte("OK")); err != nil {
-				level.Error(logger).Log("msg", "Failed to write response in /ready handler", "err", err)
-			}
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			if _, err := w.Write([]byte("Not Ready")); err != nil {
-				level.Error(logger).Log("msg", "Failed to write response in /ready handler", "err", err)
-			}
-		}
-	})
-
-	// Register the proxy handler for all other requests
-	proxyMux.HandleFunc("/", proxy.ProxyHandler(cfg, logger))
-	proxyServer := &http.Server{Handler: traces.HTTPTracesHandler(logger)(proxyMux)}
-	return proxyServer
 }
