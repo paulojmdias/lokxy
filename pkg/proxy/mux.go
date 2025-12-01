@@ -8,7 +8,7 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/config"
 )
 
-// NewServeMux returns an [http.ServeMux] preconfigured with a loki
+// NewServeMux returns an [http.ServeMux] preconfigured with a lokxy
 // handlers.
 //
 // This function is typically used to mount a dedicated metrics server
