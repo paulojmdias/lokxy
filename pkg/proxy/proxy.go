@@ -381,7 +381,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 				level.Error(p.logger).Log(
 					"msg", "Backend returned error response",
-					"backend", instance.Name,
+					"instance", instance.Name,
 					"status", resp.StatusCode,
 				)
 
@@ -414,21 +414,34 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 	}
 	// Await for all responses
 	err := wg.Wait()
+	close(results)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "Failed to fetch responses from upstreams", "err", err)
 		berr := &proxyresponse.BackendError{}
 		if errors.As(err, &berr) {
+			level.Error(p.logger).Log("msg", "Failed to fetch responses", "err", err, "instance", berr.BackendName)
 			if berr.StatusCode != 0 {
 				proxyresponse.ForwardBackendError(w, berr.BackendName, berr.StatusCode, berr.Data, p.logger)
 			} else {
 				proxyresponse.ForwardConnectionError(w, berr, p.logger)
 			}
 		} else {
+			level.Error(p.logger).Log("msg", "Failed to fetch responses from upstreams", "err", err)
 			http.Error(w, "No healthy upstreams available", http.StatusBadGateway)
+		}
+
+		for remaining := range results {
+			if remaining.Response != nil && remaining.Response.Body != nil {
+				_, err := io.Copy(io.Discard, remaining.Response.Body)
+				if err != nil {
+					level.Error(p.logger).Log("msg", "Failed to read response body", "err", err, "instance", remaining.BackendName)
+				}
+				if err := remaining.Response.Body.Close(); err != nil {
+					level.Error(p.logger).Log("msg", "Failed to close response body", "err", err, "instance", remaining.BackendName)
+				}
+			}
 		}
 		return
 	}
-	close(results)
 
 	// Combine responses into expected response
 	fn(r.Context(), w, results, p.logger)
