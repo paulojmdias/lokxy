@@ -15,11 +15,28 @@ type BackendResponse struct {
 	BackendURL  string
 }
 
-// BackendError wraps an error with metadata about which backend caused it
+var _ error = (*BackendError)(nil)
+
+// BackendError wraps an error with metadata about which backend caused it.
 type BackendError struct {
 	Err         error
 	BackendName string
 	BackendURL  string
+	StatusCode  int
+	Data        []byte
+}
+
+// Error implements error interface.
+func (b *BackendError) Error() string {
+	if b.Err == nil {
+		return fmt.Sprintf("error in upstream %s", b.BackendName)
+	}
+	return b.Err.Error()
+}
+
+// Unwrap allows access to the original error, if any.
+func (b *BackendError) Unwrap() error {
+	return b.Err
 }
 
 // ForwardBackendError sends a simple error response: {backend}: {error}
