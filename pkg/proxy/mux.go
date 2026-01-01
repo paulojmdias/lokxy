@@ -39,6 +39,6 @@ func NewServeMux(logger log.Logger, cfg *config.Config) *http.ServeMux {
 	})
 
 	// Register the proxy handler for all other requests
-	proxyMux.HandleFunc("/", ProxyHandler(cfg, logger))
+	proxyMux.HandleFunc("/", proxyHandler(cfg, logger))
 	return proxyMux
 }
