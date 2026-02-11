@@ -134,6 +134,10 @@ server_groups:
 logging:
   level: "info"       # Available options: "debug", "info", "warn", "error"
   format: "json"      # Available options: "json", "logfmt"
+
+query_transformations:
+  - find: deadbeefserver
+    replace_template: "{{ .backend.Name }}"
 ```
 
 ### Configuration Options:
@@ -154,6 +158,10 @@ logging:
 * `logging`:
     * `level`: Defines the log level (`debug`, `info`, `warn`, `error`).
     * `format`: The log output format, either in `json` or `logfmt`.
+* `query_transformations`:
+    * `find`: The text to search for in the query.
+    * `replace_template`: The Go text/template to replace the matched text with. This receives the following context for the template:
+      * `{"backend": $ServerGroup}`
 
 ### Tracing Configuration
 
