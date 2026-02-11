@@ -2,7 +2,7 @@ BUILD := build
 CONTAINER_ENGINE := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 GO ?= go
 GOFILES := $(shell find . -name "*.go" -type f ! -path "./vendor/*")
-GOLANGCI_LINT_VERSION:=v2.6.1
+GOLANGCI_LINT_VERSION:=v2.9.0
 GOLANGCI_LINT ?= golangci-lint
 VERSION := $(shell git describe --tags --abbrev=0)
 REVISION := $(shell git rev-parse --short HEAD)
