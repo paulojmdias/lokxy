@@ -12,7 +12,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -301,7 +303,30 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 			targetURL := instance.URL + r.URL.Path
 			if r.URL.RawQuery != "" {
-				targetURL += "?" + r.URL.RawQuery
+				parsed, _ := url.ParseQuery(r.URL.RawQuery)
+				query := parsed.Get("query")
+
+				templateContext := map[string]any{
+					"backend": instance,
+				}
+				templateBuffer := bytes.NewBuffer(nil)
+				for _, ro := range p.config.QueryTransformations {
+					if ro.ReplaceTemplate.Template == nil {
+						level.Warn(p.logger).Log("msg", "provided template is blank / nil")
+						continue
+					}
+					if strings.Contains(query, ro.Find) {
+						templateBuffer.Reset()
+						tmplErr := ro.ReplaceTemplate.Execute(templateBuffer, templateContext)
+						if tmplErr != nil {
+							level.Error(p.logger).Log("msg", "Failed to execute replace template", "error", tmplErr)
+							continue
+						}
+						query = strings.ReplaceAll(query, ro.Find, templateBuffer.String())
+					}
+				}
+				parsed.Set("query", query)
+				targetURL += "?" + parsed.Encode()
 			}
 
 			requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
