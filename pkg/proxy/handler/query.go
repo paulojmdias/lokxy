@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats" // For statistics
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/prometheus/common/model"
 )
 

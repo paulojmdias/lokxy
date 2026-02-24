@@ -188,7 +188,16 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			span := trace.SpanFromContext(r.Context())
 			span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
-			p.fanoutRequest(w, r, handlerFunc)
+			// Add step info to context for query_range endpoints
+			ctx := r.Context()
+			stepConfig := getStepConfig(r, config)
+			if stepConfig.HasOverride && stepConfig.OriginalStep > 0 {
+				ctx = handler.WithStepInfo(ctx, handler.StepInfo{
+					OriginalStep:   stepConfig.OriginalStep,
+					ConfiguredStep: stepConfig.ConfiguredStep,
+				})
+			}
+			p.fanoutRequest(w, r.WithContext(ctx), handlerFunc)
 		})
 	}
 
@@ -306,10 +315,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				}
 			}
 
-			targetURL := instance.URL + r.URL.Path
-			if r.URL.RawQuery != "" {
-				targetURL += "?" + r.URL.RawQuery
-			}
+			targetURL := buildTargetURL(instance.URL, r, p.config)
 
 			requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
 
@@ -411,6 +417,21 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					Data:        bodyBytes,
 				}
 			}
+			// Buffer the body while the upstream context is still alive.
+			// After wg.Wait() the errgroup context is cancelled, which would
+			// cause reads on an open HTTP body to return context.Canceled.
+			bodyBytes, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				requestSpan.RecordError(err)
+				level.Error(p.logger).Log("msg", "Failed to buffer response body", "instance", instance.Name, "err", err)
+				return &proxyresponse.BackendError{
+					Err:         err,
+					BackendName: instance.Name,
+					BackendURL:  instance.URL,
+				}
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			results <- &proxyresponse.BackendResponse{
 				Response:    resp,
 				BackendName: instance.Name,
