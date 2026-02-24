@@ -13,8 +13,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats" // For statistics
-	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/prometheus/common/model"
+
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
 // Handle Loki query and query_range responses
@@ -24,7 +25,7 @@ func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-cha
 	var mergedVector loghttp.Vector
 	var resultType loghttp.ResultType
 	var mergedStats stats.Result
-	var encodingFlagsMap = make(map[string]struct{})
+	encodingFlagsMap := make(map[string]struct{})
 
 	for backendResp := range results {
 		resp := backendResp.Response
@@ -205,7 +206,6 @@ func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-cha
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
 		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
 	}
-
 }
 
 // downsampleMatrix downsamples matrix data to match the target step.

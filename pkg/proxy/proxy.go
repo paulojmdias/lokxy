@@ -17,17 +17,18 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	cfg "github.com/paulojmdias/lokxy/pkg/config"
-	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
-	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
-	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
 	"github.com/prometheus/common/model"
-	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
+
+	cfg "github.com/paulojmdias/lokxy/pkg/config"
+	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
+	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
+	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
 // Paths that support the step parameter

@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
+
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
 func TestHandleLokiQueries_StreamResult(t *testing.T) {
