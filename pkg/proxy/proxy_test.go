@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
@@ -183,7 +184,7 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 			b, _ := io.ReadAll(r.Body)
 			got1 = string(b)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[],"stats":{}}}`))
 		},
 	})
 	defer s1.Close()
@@ -193,7 +194,7 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 			b, _ := io.ReadAll(r.Body)
 			got2 = string(b)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[],"stats":{}}}`))
 		},
 	})
 	defer s2.Close()
@@ -210,6 +211,45 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 
 	require.Equal(t, `query={app="lokxy"}`, got1)
 	require.Equal(t, `query={app="lokxy"}`, got2)
+}
+
+func TestProxy_QueryRange_SlowStreamingBody_NotCanceledBeforeMerge(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	up := "/loki/api/v1/query_range"
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		up: func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"streams","result":[`)
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+
+			time.Sleep(150 * time.Millisecond)
+			_, _ = io.WriteString(w, `{"stream":{"app":"lokxy"},"values":[["1609459200000000000","line"]]}],"stats":{}}}`)
+		},
+	})
+	defer s1.Close()
+
+	cfg := mkConfig(s1.URL)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, up+"?query=%7Bapp%3D%22lokxy%22%7D", nil)
+
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
+	require.Equal(t, "success", out["status"])
+
+	data, ok := out["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "streams", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 1)
 }
 
 func TestProxy_UpstreamHeadersInjected(t *testing.T) {
