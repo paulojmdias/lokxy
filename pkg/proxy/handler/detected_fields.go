@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -109,7 +110,7 @@ func addDetectedField(merged map[string]*fieldAgg, label, typ string, cardinalit
 
 // HandleLokiDetectedFields aggregates detected fields from multiple Loki instances.
 // Accepts both "fields" and "detectedFields" input envelopes and emits the "fields" envelope.
-func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_detected_fields")
 	defer span.End()
 
@@ -117,7 +118,8 @@ func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, result
 	merged := make(map[string]*fieldAgg)
 	var limit *int // keep the first non-nil limit we see
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		if resp == nil || resp.Body == nil {
 			_, errSpan := traces.CreateSpan(ctx, "detected_fields.nil_response")
 			errSpan.RecordError(io.ErrUnexpectedEOF)
@@ -213,13 +215,14 @@ func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, result
 
 // HandleLokiDetectedFieldValues aggregates values for a given detected field.
 // Accepts upstream envelopes using either "field" or "label" as the name key.
-func HandleLokiDetectedFieldValues(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, fieldName string, logger log.Logger) {
+func HandleLokiDetectedFieldValues(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, fieldName string, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_detected_field_values")
 	defer span.End()
 
 	merged := make(map[string]int)
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		if resp == nil || resp.Body == nil {
 			_, errSpan := traces.CreateSpan(ctx, "detected_field_values.nil_response")
 			errSpan.RecordError(io.ErrUnexpectedEOF)

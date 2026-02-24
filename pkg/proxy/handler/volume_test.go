@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,12 +85,12 @@ func TestHandleLokiVolume(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results := make(chan *http.Response, len(tt.responses))
+			results := make(chan *proxyresponse.BackendResponse, len(tt.responses))
 
 			for _, respBody := range tt.responses {
 				resp := httptest.NewRecorder()
 				resp.WriteString(respBody)
-				results <- resp.Result()
+				results <- wrapResponse(resp.Result())
 			}
 			close(results)
 
@@ -108,10 +109,10 @@ func TestHandleLokiVolume(t *testing.T) {
 func TestHandleLokiVolumeWithInvalidJSON(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	resp := httptest.NewRecorder()
 	resp.WriteString("invalid json")
-	results <- resp.Result()
+	results <- wrapResponse(resp.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -127,12 +128,12 @@ func TestHandleLokiVolumeWithInvalidJSON(t *testing.T) {
 func TestHandleLokiVolumeResponseReaderError(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	resp := &http.Response{
 		StatusCode: 200,
 		Body:       &failingReader{},
 	}
-	results <- resp
+	results <- wrapResponse(resp)
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -220,11 +221,11 @@ func TestHandleLokiVolumeRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results := make(chan *http.Response, len(tt.responses))
+			results := make(chan *proxyresponse.BackendResponse, len(tt.responses))
 			for _, respBody := range tt.responses {
 				resp := httptest.NewRecorder()
 				resp.WriteString(respBody)
-				results <- resp.Result()
+				results <- wrapResponse(resp.Result())
 			}
 			close(results)
 

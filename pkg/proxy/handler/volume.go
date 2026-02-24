@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -44,14 +45,15 @@ type Volume struct {
 }
 
 // HandleLokiVolume aggregates volume data from multiple Loki instances
-func HandleLokiVolume(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiVolume(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_volume")
 	defer span.End()
 
 	var mergedVolumes []Volume
 	volumeMap := make(map[string]*Volume)
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		if resp == nil || resp.Body == nil {
 			_, errSpan := traces.CreateSpan(ctx, "volume.nil_response")
 			errSpan.RecordError(io.ErrUnexpectedEOF)
@@ -170,7 +172,7 @@ func HandleLokiVolume(ctx context.Context, w http.ResponseWriter, results <-chan
 }
 
 // HandleLokiVolumeRange handles the volume_range endpoint
-func HandleLokiVolumeRange(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiVolumeRange(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_volume_range")
 	defer span.End()
 
@@ -178,7 +180,8 @@ func HandleLokiVolumeRange(ctx context.Context, w http.ResponseWriter, results <
 	var mergedVolumes []Volume
 	volumeMap := make(map[string]*Volume)
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		if resp == nil || resp.Body == nil {
 			_, errSpan := traces.CreateSpan(ctx, "volume_range.nil_response")
 			errSpan.RecordError(io.ErrUnexpectedEOF)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,11 +57,11 @@ func TestHandleLokiDetectedLabels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results := make(chan *http.Response, len(tt.responses))
+			results := make(chan *proxyresponse.BackendResponse, len(tt.responses))
 			for _, body := range tt.responses {
 				rec := httptest.NewRecorder()
 				rec.WriteString(body)
-				results <- rec.Result()
+				results <- wrapResponse(rec.Result())
 			}
 			close(results)
 
@@ -93,11 +94,11 @@ func TestHandleLokiDetectedLabelsWithMerging(t *testing.T) {
 		`{ "detectedLabels": [ { "label": "job", "cardinality": 3 } ] }`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, body := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(body)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -116,10 +117,10 @@ func TestHandleLokiDetectedLabelsWithMerging(t *testing.T) {
 func TestHandleLokiDetectedLabelsWithInvalidJSON(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString("invalid json")
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -134,12 +135,12 @@ func TestHandleLokiDetectedLabelsWithInvalidJSON(t *testing.T) {
 func TestHandleLokiDetectedLabelsResponseReaderError(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	resp := &http.Response{
 		StatusCode: 200,
 		Body:       &failingDetectedLabelsReader{},
 	}
-	results <- resp
+	results <- wrapResponse(resp)
 	close(results)
 
 	w := httptest.NewRecorder()

@@ -17,7 +17,7 @@ import (
 )
 
 // Handle Loki query and query_range responses
-func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
 	var mergedVector loghttp.Vector
@@ -25,7 +25,8 @@ func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-cha
 	var mergedStats stats.Result
 	var encodingFlagsMap = make(map[string]struct{})
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		// Read the entire body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
@@ -119,12 +120,12 @@ func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-cha
 				metadata := make(map[string]any)
 
 				// Add structuredMetadata if it exists
-				if len(entry.StructuredMetadata) > 0 {
+				if entry.StructuredMetadata.Len() > 0 {
 					metadata["structuredMetadata"] = entry.StructuredMetadata
 				}
 
 				// Add parsed if it exists
-				if len(entry.Parsed) > 0 {
+				if entry.Parsed.Len() > 0 {
 					metadata["parsed"] = entry.Parsed
 				}
 

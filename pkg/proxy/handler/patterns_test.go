@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,10 +25,10 @@ func TestHandleLokiPatterns_SingleResponse(t *testing.T) {
 		]
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -68,11 +69,11 @@ func TestHandleLokiPatterns_MergeAcrossBackends(t *testing.T) {
 		}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, s := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(s)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -109,10 +110,10 @@ func TestHandleLokiPatterns_Empty(t *testing.T) {
 	logger := log.NewNopLogger()
 
 	res := `{"status":"success","data":[]}`
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(res)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -126,10 +127,10 @@ func TestHandleLokiPatterns_Empty(t *testing.T) {
 func TestHandleLokiPatterns_InvalidJSON(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString("not-json")
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -145,11 +146,11 @@ func TestHandleLokiPatterns_InvalidJSON(t *testing.T) {
 func TestHandleLokiPatterns_ResponseReaderError(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 1)
-	results <- &http.Response{
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	results <- wrapResponse(&http.Response{
 		StatusCode: 200,
 		Body:       &failingPatternsReader{},
-	}
+	})
 	close(results)
 
 	w := httptest.NewRecorder()

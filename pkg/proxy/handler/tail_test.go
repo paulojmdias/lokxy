@@ -11,14 +11,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gorilla/websocket"
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
-	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	// Initialize metrics for tests to prevent nil pointer panics
-	_, _ = metrics.InitMetrics(context.Background())
-}
 
 func TestCreateWebSocketDialer_WithoutTLS(t *testing.T) {
 	logger := log.NewNopLogger()

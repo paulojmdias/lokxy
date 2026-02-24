@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -30,14 +31,15 @@ type LokiPatternsResponse struct {
 }
 
 // HandleLokiPatterns aggregates /patterns responses from multiple Loki instances.
-func HandleLokiPatterns(ctx context.Context, w http.ResponseWriter, results <-chan *http.Response, logger log.Logger) {
+func HandleLokiPatterns(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_patterns")
 	defer span.End()
 
 	// merged[pattern][timestamp] = count
 	merged := make(map[string]map[int64]int64)
 
-	for resp := range results {
+	for backendResp := range results {
+		resp := backendResp.Response
 		if resp == nil || resp.Body == nil {
 			_, errSpan := traces.CreateSpan(ctx, "patterns.nil_response")
 			errSpan.RecordError(io.ErrUnexpectedEOF)

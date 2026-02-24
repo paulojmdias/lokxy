@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,10 +36,10 @@ func TestDetectedFields_VariantA_Single(t *testing.T) {
 		"limit": 1000
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -65,11 +66,11 @@ func TestDetectedFields_VariantB_Merge(t *testing.T) {
 		`{"detectedFields":[{"label":"job","cardinality":3},{"field":"service","cardinality":4}]}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, s := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(s)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -95,11 +96,11 @@ func TestDetectedFields_ParsersUnionAndType(t *testing.T) {
 		`{"fields":[{"label":"app","type":"","cardinality":3,"parsers":["json","logfmt"]}]}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, s := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(s)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -120,11 +121,11 @@ func TestDetectedFields_ParsersUnionAndType(t *testing.T) {
 func TestDetectedFields_InvalidJSONAndReaderErr(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	results := make(chan *http.Response, 2)
+	results := make(chan *proxyresponse.BackendResponse, 2)
 	rec1 := httptest.NewRecorder()
 	rec1.WriteString(`not-json`)
-	results <- rec1.Result()
-	results <- &http.Response{StatusCode: 200, Body: &failingDFReader{}}
+	results <- wrapResponse(rec1.Result())
+	results <- wrapResponse(&http.Response{StatusCode: 200, Body: &failingDFReader{}})
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -149,10 +150,10 @@ func TestDetectedFieldValues_SingleAndSorted(t *testing.T) {
 		]
 	}`
 
-	results := make(chan *http.Response, 1)
+	results := make(chan *proxyresponse.BackendResponse, 1)
 	rec := httptest.NewRecorder()
 	rec.WriteString(body)
-	results <- rec.Result()
+	results <- wrapResponse(rec.Result())
 	close(results)
 
 	w := httptest.NewRecorder()
@@ -176,11 +177,11 @@ func TestDetectedFieldValues_MergeAcrossBackends(t *testing.T) {
 		`{"label":"job","values":[{"value":"api","count":3},{"value":"scheduler","count":4}]}`,
 	}
 
-	results := make(chan *http.Response, len(responses))
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
 	for _, s := range responses {
 		rec := httptest.NewRecorder()
 		rec.WriteString(s)
-		results <- rec.Result()
+		results <- wrapResponse(rec.Result())
 	}
 	close(results)
 
@@ -203,11 +204,11 @@ func TestDetectedFieldValues_InvalidJSONAndReaderErr(t *testing.T) {
 	logger := log.NewNopLogger()
 	fieldName := "env"
 
-	results := make(chan *http.Response, 2)
+	results := make(chan *proxyresponse.BackendResponse, 2)
 	rec1 := httptest.NewRecorder()
 	rec1.WriteString(`oops`)
-	results <- rec1.Result()
-	results <- &http.Response{StatusCode: 200, Body: &failingDFReader{}}
+	results <- wrapResponse(rec1.Result())
+	results <- wrapResponse(&http.Response{StatusCode: 200, Body: &failingDFReader{}})
 	close(results)
 
 	w := httptest.NewRecorder()
