@@ -48,7 +48,10 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				logFn = level.Warn(logger)
 			}
-			logFn.Log("msg", "Failed to read response body", "backend", backendResp.BackendName, "err", err)
+			_ = logFn.Log("msg", "Failed to read response body",
+				"backend", backendResp.BackendName,
+				"err", err,
+			)
 			continue
 		}
 

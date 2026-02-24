@@ -279,7 +279,6 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 	// Forward requests using the custom RoundTripper
 	var wg errgroup.Group
 	for _, instance := range p.config.ServerGroups {
-		instance := instance
 		wg.Go(func() error {
 			upstreamCtx, requestSpan := traces.CreateSpan(parentCtx, "proxy_upstream_request")
 			defer requestSpan.End()
