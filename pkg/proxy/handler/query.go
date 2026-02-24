@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats" // For statistics
+
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
@@ -21,7 +22,7 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 	var mergedVector loghttp.Vector
 	var resultType loghttp.ResultType
 	var mergedStats stats.Result
-	var encodingFlagsMap = make(map[string]struct{})
+	encodingFlagsMap := make(map[string]struct{})
 
 	for backendResp := range results {
 		resp := backendResp.Response
@@ -195,5 +196,4 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
 		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
 	}
-
 }

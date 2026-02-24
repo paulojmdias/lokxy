@@ -10,8 +10,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/websocket"
-	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/stretchr/testify/require"
+
+	cfg "github.com/paulojmdias/lokxy/pkg/config"
 )
 
 func TestCreateWebSocketDialer_WithoutTLS(t *testing.T) {
