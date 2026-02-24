@@ -8,8 +8,9 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 	"github.com/stretchr/testify/require"
+
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
 func TestHandleLokiVolume(t *testing.T) {

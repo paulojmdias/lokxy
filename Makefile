@@ -4,6 +4,8 @@ GO ?= go
 GOFILES := $(shell find . -name "*.go" -type f ! -path "./vendor/*")
 GOLANGCI_LINT_VERSION:=v2.9.0
 GOLANGCI_LINT ?= golangci-lint
+GOFUMPT ?= gofumpt
+GOIMPORTS ?= goimports
 VERSION := $(shell git describe --tags --abbrev=0)
 REVISION := $(shell git rev-parse --short HEAD)
 
@@ -33,9 +35,19 @@ run:
 lint-install:
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
+.PHONY: fmt-install
+fmt-install:
+	$(GO) install mvdan.cc/gofumpt@latest
+	$(GO) install golang.org/x/tools/cmd/goimports@latest
+
 .PHONY: lint
 lint:
 	$(GOLANGCI_LINT) run --timeout=10m
+
+.PHONY: fmt
+fmt:
+	$(GOFUMPT) -l -w -extra .
+	$(GOIMPORTS) -w -local github.com/paulojmdias/lokxy ./
 
 .PHONY: build
 build:

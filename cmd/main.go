@@ -15,12 +15,13 @@ import (
 
 	kitlog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/logging"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy"
-	"golang.org/x/sync/errgroup"
 )
 
 // Build information, populated at build-time
