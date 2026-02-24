@@ -14,12 +14,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
-	cfg "github.com/paulojmdias/lokxy/pkg/config"
-	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
-	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+
+	cfg "github.com/paulojmdias/lokxy/pkg/config"
+	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
+	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 )
 
 // WebSocket upgrader to upgrade the HTTP connection to a WebSocket connection

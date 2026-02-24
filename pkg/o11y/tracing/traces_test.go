@@ -33,7 +33,6 @@ func TestInitTracer(t *testing.T) {
 
 	ctx := context.Background()
 	tracerProvider, err := InitTracer(ctx)
-
 	if err != nil {
 		t.Logf("InitTracer failed (expected in test env): %v", err)
 
