@@ -8,9 +8,8 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/stretchr/testify/require"
-
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHandleLokiQueries_StreamResult(t *testing.T) {
@@ -273,6 +272,67 @@ func TestHandleLokiQueries_WithStructuredMetadata(t *testing.T) {
 	require.Equal(t, "streams", data["resultType"])
 }
 
+func TestHandleLokiQueries_WithCategorizedMetadataArrays(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [
+				{
+					"stream": {"app": "nginx"},
+					"values": [
+						["1609459200000000000", "{\"message\":\"Update event got: PlacesData 3415\"}", {"structuredMetadata": [["trace_id", "0242ac120002"]], "parsed": [["level", "info"]]}],
+						["1609459201000000000", "{\"message\":\"next log line\"}"]
+					]
+				}
+			],
+			"stats": {},
+			"encodingFlags": ["categorize-labels"]
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	require.Equal(t, "success", response["status"])
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "streams", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+
+	stream, ok := result[0].(map[string]any)
+	require.True(t, ok)
+
+	values, ok := stream["values"].([]any)
+	require.True(t, ok)
+	require.Len(t, values, 2)
+
+	firstValue, ok := values[0].([]any)
+	require.True(t, ok)
+	require.Len(t, firstValue, 3)
+
+	metadata, ok := firstValue[2].(map[string]any)
+	require.True(t, ok)
+	_, hasStructuredMetadata := metadata["structuredMetadata"].([]any)
+	_, hasParsed := metadata["parsed"].([]any)
+	require.True(t, hasStructuredMetadata)
+	require.True(t, hasParsed)
+}
+
 func TestHandleLokiQueries_EmptyResult(t *testing.T) {
 	logger := log.NewNopLogger()
 
@@ -319,17 +379,13 @@ func TestHandleLokiQueries_InvalidJSON(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiQueries(t.Context(), w, results, logger)
 
+	require.Equal(t, http.StatusBadGateway, w.Code)
+
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 
-	// Should return success with empty result on error
-	require.Equal(t, "success", response["status"])
-	data, ok := response["data"].(map[string]any)
-	require.True(t, ok)
-
-	result, ok := data["result"].([]any)
-	require.True(t, ok)
-	require.Empty(t, result)
+	require.Equal(t, "error", response["status"])
+	require.Equal(t, "backend_error", response["errorType"])
 }
 
 func TestHandleLokiQueries_ResponseReaderError(t *testing.T) {
@@ -345,17 +401,13 @@ func TestHandleLokiQueries_ResponseReaderError(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiQueries(t.Context(), w, results, logger)
 
+	require.Equal(t, http.StatusBadGateway, w.Code)
+
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 
-	// Should return success with empty result on read error
-	require.Equal(t, "success", response["status"])
-	data, ok := response["data"].(map[string]any)
-	require.True(t, ok)
-
-	result, ok := data["result"].([]any)
-	require.True(t, ok)
-	require.Empty(t, result)
+	require.Equal(t, "error", response["status"])
+	require.Equal(t, "backend_error", response["errorType"])
 }
 
 func TestHandleLokiQueries_PartialFailure(t *testing.T) {
@@ -418,16 +470,13 @@ func TestHandleLokiQueries_NoResponses(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiQueries(t.Context(), w, results, logger)
 
+	require.Equal(t, http.StatusBadGateway, w.Code)
+
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 
-	require.Equal(t, "success", response["status"])
-	data, ok := response["data"].(map[string]any)
-	require.True(t, ok)
-
-	result, ok := data["result"].([]any)
-	require.True(t, ok)
-	require.Empty(t, result)
+	require.Equal(t, "error", response["status"])
+	require.Equal(t, "backend_error", response["errorType"])
 }
 
 func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
