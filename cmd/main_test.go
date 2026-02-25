@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -60,8 +59,23 @@ server_groups:
 		return run(ctx, logger, cfg, ":3100", ":9091")
 	})
 
-	require.NoError(t, waitForEndpoint("http://localhost:9091/metrics", 5*time.Second))
-	require.NoError(t, waitForEndpoint("http://localhost:3100/healthy", 5*time.Second))
+	require.Eventuallyf(t, func() bool {
+		resp, err := http.Get("http://localhost:9091/metrics")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 5*time.Second, 50*time.Millisecond, "endpoint %s was not ready within 5s", "http://localhost:9091/metrics")
+
+	require.Eventuallyf(t, func() bool {
+		resp, err := http.Get("http://localhost:3100/healthy")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 5*time.Second, 50*time.Millisecond, "endpoint %s was not ready within 5s", "http://localhost:3100/healthy")
 
 	// Test cases
 	t.Run("test metrics endpoint", func(t *testing.T) {
@@ -142,17 +156,4 @@ server_groups:
 	cancel()
 	err = eg.Wait()
 	require.NoError(t, err)
-}
-
-func waitForEndpoint(url string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		resp, err := http.Get(url)
-		if err == nil {
-			resp.Body.Close()
-			return nil
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return fmt.Errorf("endpoint %s was not ready within %s", url, timeout)
 }
