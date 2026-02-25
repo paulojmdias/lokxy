@@ -17,17 +17,16 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
-
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 )
 
 // CustomRoundTripper intercepts the request and response
@@ -275,13 +274,13 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 		return io.NopCloser(bytes.NewReader(bodyBytes))
 	}
 	results := make(chan *proxyresponse.BackendResponse, len(p.config.ServerGroups))
-	ctx := r.Context()
+	parentCtx := r.Context()
 
 	// Forward requests using the custom RoundTripper
-	wg, ctx := errgroup.WithContext(ctx)
+	var wg errgroup.Group
 	for _, instance := range p.config.ServerGroups {
 		wg.Go(func() error {
-			upstreamCtx, requestSpan := traces.CreateSpan(ctx, "proxy_upstream_request")
+			upstreamCtx, requestSpan := traces.CreateSpan(parentCtx, "proxy_upstream_request")
 			defer requestSpan.End()
 
 			requestSpan.SetAttributes(
