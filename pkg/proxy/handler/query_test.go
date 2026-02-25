@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -475,6 +476,167 @@ func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
 	require.True(t, ok)
 	// Should have unique flags: gzip, snappy, zstd
 	require.Len(t, encodingFlags, 3)
+}
+
+func TestHandleLokiQueries_MatrixDownsampledWhenStepOverride(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	// 7 data points at 10s intervals: t=0,10,20,30,40,50,60 seconds (Unix ms)
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "matrix",
+			"result": [
+				{
+					"metric": {"app": "nginx"},
+					"values": [
+						[0,   "1"],
+						[10,  "2"],
+						[20,  "3"],
+						[30,  "4"],
+						[40,  "5"],
+						[50,  "6"],
+						[60,  "7"]
+					]
+				}
+			],
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	// OriginalStep (60s) > ConfiguredStep (10s): downsampling should occur
+	ctx := WithStepInfo(t.Context(), StepInfo{
+		OriginalStep:   60 * time.Second,
+		ConfiguredStep: 10 * time.Second,
+	})
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(ctx, w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "matrix", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+
+	series, ok := result[0].(map[string]any)
+	require.True(t, ok)
+	values, ok := series["values"].([]any)
+	require.True(t, ok)
+	// 7 points at 10s intervals, bucketed into 60s: t=0..59 → bucket 0, t=60 → bucket 60 → 2 buckets
+	require.Less(t, len(values), 7, "downsampling should reduce the number of data points")
+}
+
+func TestHandleLokiQueries_MatrixNotDownsampledWhenNoStepInfo(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "matrix",
+			"result": [
+				{
+					"metric": {"app": "nginx"},
+					"values": [
+						[0,  "1"],
+						[30, "2"],
+						[60, "3"]
+					]
+				}
+			],
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	// No StepInfo in context: no downsampling
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+
+	series, ok := result[0].(map[string]any)
+	require.True(t, ok)
+	values, ok := series["values"].([]any)
+	require.True(t, ok)
+	require.Len(t, values, 3, "all 3 original points should be preserved")
+}
+
+func TestHandleLokiQueries_MatrixNotDownsampledWhenOriginalStepNotLarger(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "matrix",
+			"result": [
+				{
+					"metric": {"app": "nginx"},
+					"values": [
+						[0,  "1"],
+						[30, "2"],
+						[60, "3"]
+					]
+				}
+			],
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	// OriginalStep (10s) <= ConfiguredStep (60s): no downsampling should occur
+	ctx := WithStepInfo(t.Context(), StepInfo{
+		OriginalStep:   10 * time.Second,
+		ConfiguredStep: 60 * time.Second,
+	})
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(ctx, w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+
+	series, ok := result[0].(map[string]any)
+	require.True(t, ok)
+	values, ok := series["values"].([]any)
+	require.True(t, ok)
+	require.Len(t, values, 3, "all 3 original points should be preserved when OriginalStep <= ConfiguredStep")
 }
 
 // failingQueryReader always fails on Read (simulates network/IO failure)

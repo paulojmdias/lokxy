@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -28,6 +29,12 @@ import (
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
+)
+
+// Paths that support the step parameter
+const (
+	pathQueryRange  = "/loki/api/v1/query_range"
+	pathVolumeRange = "/loki/api/v1/index/volume_range"
 )
 
 // CustomRoundTripper intercepts the request and response
@@ -182,7 +189,16 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			span := trace.SpanFromContext(r.Context())
 			span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
-			p.fanoutRequest(w, r, handlerFunc)
+			// Add step info to context for query_range endpoints
+			ctx := r.Context()
+			stepConfig := getStepConfig(r, config)
+			if stepConfig.HasOverride && stepConfig.OriginalStep > 0 {
+				ctx = handler.WithStepInfo(ctx, handler.StepInfo{
+					OriginalStep:   stepConfig.OriginalStep,
+					ConfiguredStep: stepConfig.ConfiguredStep,
+				})
+			}
+			p.fanoutRequest(w, r.WithContext(ctx), handlerFunc)
 		})
 	}
 
@@ -300,10 +316,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				}
 			}
 
-			targetURL := instance.URL + r.URL.Path
-			if r.URL.RawQuery != "" {
-				targetURL += "?" + r.URL.RawQuery
-			}
+			targetURL := buildTargetURL(instance.URL, r, p.config)
 
 			requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
 
@@ -405,6 +418,21 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					Data:        bodyBytes,
 				}
 			}
+			// Buffer the body while the upstream context is still alive.
+			// After wg.Wait() the errgroup context is cancelled, which would
+			// cause reads on an open HTTP body to return context.Canceled.
+			bodyBytes, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				requestSpan.RecordError(err)
+				level.Error(p.logger).Log("msg", "Failed to buffer response body", "instance", instance.Name, "err", err)
+				return &proxyresponse.BackendError{
+					Err:         err,
+					BackendName: instance.Name,
+					BackendURL:  instance.URL,
+				}
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			results <- &proxyresponse.BackendResponse{
 				Response:    resp,
 				BackendName: instance.Name,
@@ -446,4 +474,75 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 	// Combine responses into expected response
 	fn(r.Context(), w, results, p.logger)
+}
+
+// StepConfig holds step configuration for a request
+type StepConfig struct {
+	OriginalStep   time.Duration
+	ConfiguredStep time.Duration
+	HasOverride    bool
+}
+
+// getStepConfig extracts step configuration for the request
+func getStepConfig(r *http.Request, config *cfg.Config) StepConfig {
+	path := r.URL.Path
+	result := StepConfig{}
+
+	// Determine configured step based on path
+	var configuredStepStr string
+	switch path {
+	case pathQueryRange:
+		configuredStepStr = config.API.QueryRange.Step
+	case pathVolumeRange:
+		configuredStepStr = config.API.VolumeRange.Step
+	}
+
+	// Parse configured step
+	if configuredStepStr != "" {
+		if d, err := model.ParseDuration(configuredStepStr); err == nil {
+			result.ConfiguredStep = time.Duration(d)
+			result.HasOverride = true
+		}
+	}
+
+	// Parse original step from request
+	originalStepStr := r.URL.Query().Get("step")
+	if originalStepStr != "" {
+		if d, err := model.ParseDuration(originalStepStr); err == nil {
+			result.OriginalStep = time.Duration(d)
+		}
+	}
+
+	return result
+}
+
+// buildTargetURL constructs the target URL for the upstream request,
+// injecting the configured step parameter if applicable.
+func buildTargetURL(instanceURL string, r *http.Request, config *cfg.Config) string {
+	path := r.URL.Path
+	targetURL := instanceURL + path
+
+	// Determine if we need to inject a step parameter
+	var configuredStep string
+	switch path {
+	case pathQueryRange:
+		configuredStep = config.API.QueryRange.Step
+	case pathVolumeRange:
+		configuredStep = config.API.VolumeRange.Step
+	}
+
+	// If no step is configured, just append the original query string
+	if configuredStep == "" {
+		if r.URL.RawQuery != "" {
+			targetURL += "?" + r.URL.RawQuery
+		}
+		return targetURL
+	}
+
+	// Parse query parameters and inject/override step
+	query := r.URL.Query()
+	query.Set("step", configuredStep)
+	targetURL += "?" + query.Encode()
+
+	return targetURL
 }
