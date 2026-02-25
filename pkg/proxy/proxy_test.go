@@ -184,7 +184,7 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 			b, _ := io.ReadAll(r.Body)
 			got1 = string(b)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[],"stats":{}}}`))
 		},
 	})
 	defer s1.Close()
@@ -194,7 +194,7 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 			b, _ := io.ReadAll(r.Body)
 			got2 = string(b)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[],"stats":{}}}`))
 		},
 	})
 	defer s2.Close()
