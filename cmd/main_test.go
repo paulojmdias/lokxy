@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paulojmdias/lokxy/pkg/config"
-	"github.com/paulojmdias/lokxy/pkg/o11y/logging"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/paulojmdias/lokxy/pkg/config"
+	"github.com/paulojmdias/lokxy/pkg/o11y/logging"
 )
 
 func TestMainFunction(t *testing.T) {
