@@ -275,10 +275,10 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 		return io.NopCloser(bytes.NewReader(bodyBytes))
 	}
 	results := make(chan *proxyresponse.BackendResponse, len(p.config.ServerGroups))
-	parentCtx := r.Context()
+	ctx := r.Context()
 
 	// Forward requests using the custom RoundTripper
-	wg, ctx := errgroup.WithContext(parentCtx)
+	wg, ctx := errgroup.WithContext(ctx)
 	for _, instance := range p.config.ServerGroups {
 		wg.Go(func() error {
 			upstreamCtx, requestSpan := traces.CreateSpan(ctx, "proxy_upstream_request")
