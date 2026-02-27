@@ -15,8 +15,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/stretchr/testify/require"
+
+	cfg "github.com/paulojmdias/lokxy/pkg/config"
 )
 
 // ---------- helpers ----------
