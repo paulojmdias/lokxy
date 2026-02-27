@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -57,6 +58,24 @@ server_groups:
 	eg.Go(func() error {
 		return run(ctx, logger, cfg, ":3100", ":9091")
 	})
+
+	require.Eventuallyf(t, func() bool {
+		resp, err := http.Get("http://localhost:9091/metrics")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 5*time.Second, 50*time.Millisecond, "endpoint %s was not ready within 5s", "http://localhost:9091/metrics")
+
+	require.Eventuallyf(t, func() bool {
+		resp, err := http.Get("http://localhost:3100/healthy")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 5*time.Second, 50*time.Millisecond, "endpoint %s was not ready within 5s", "http://localhost:3100/healthy")
 
 	// Test cases
 	t.Run("test metrics endpoint", func(t *testing.T) {

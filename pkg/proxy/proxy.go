@@ -405,6 +405,25 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					Data:        bodyBytes,
 				}
 			}
+			respBodyBytes, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				requestSpan.RecordError(err)
+				requestSpan.SetStatus(codes.Error, "Failed to read upstream response body")
+				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
+					attribute.String("path", r.URL.Path),
+					attribute.String("method", r.Method),
+					attribute.String("instance", instance.Name),
+				))
+				level.Error(p.logger).Log("msg", "Failed to read upstream response body", "instance", instance.Name, "err", err)
+				return &proxyresponse.BackendError{
+					Err:         err,
+					BackendName: instance.Name,
+					BackendURL:  instance.URL,
+				}
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(respBodyBytes))
+			resp.ContentLength = int64(len(respBodyBytes))
 			results <- &proxyresponse.BackendResponse{
 				Response:    resp,
 				BackendName: instance.Name,

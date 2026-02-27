@@ -10,7 +10,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -211,6 +213,66 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 
 	require.Equal(t, `query={app="lokxy"}`, got1)
 	require.Equal(t, `query={app="lokxy"}`, got2)
+}
+
+func TestProxy_QueryRange_SlowStreamingBody_NotCanceledBeforeMerge(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	up := "/loki/api/v1/query_range"
+
+	var slowCanceled atomic.Bool
+	var slowFinalWriteErr atomic.Bool
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		up: func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"streams","result":[`)
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+
+			select {
+			case <-r.Context().Done():
+				slowCanceled.Store(true)
+				return
+			case <-time.After(150 * time.Millisecond):
+			}
+
+			if _, err := io.WriteString(w, `{"stream":{"app":"lokxy","src":"s1"},"values":[["1609459200000000000","line-1"]]}],"stats":{}}}`); err != nil {
+				slowFinalWriteErr.Store(true)
+			}
+		},
+	})
+	defer s1.Close()
+
+	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		up: func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"lokxy","src":"s2"},"values":[["1609459200000000000","line-2"]]}],"stats":{}}}`)
+		},
+	})
+	defer s2.Close()
+
+	cfg := mkConfig(s1.URL, s2.URL)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, up+"?query=%7Bapp%3D%22lokxy%22%7D", nil)
+
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.False(t, slowCanceled.Load(), "slow upstream request context was canceled before body was fully read")
+	require.False(t, slowFinalWriteErr.Load(), "slow upstream could not finish writing the response body")
+
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
+	require.Equal(t, "success", out["status"])
+
+	data, ok := out["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "streams", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 2)
 }
 
 func TestProxy_UpstreamHeadersInjected(t *testing.T) {
