@@ -258,6 +258,24 @@ func TestHandleLokiStats_NoResponses(t *testing.T) {
 	require.Equal(t, 0, response.Entries)
 }
 
+func TestHandleLokiStats_EmptyBody(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	// Valid JSON with zero stats — exercises the zero-accumulation path.
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(`{"streams":0,"chunks":0,"bytes":0,"entries":0}`)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiStats(t.Context(), w, results, logger)
+
+	response := decodeStatsResponse(t, w)
+	require.Equal(t, 0, response.Streams)
+	require.Equal(t, 0, response.Bytes)
+}
+
 // failingStatsReader always fails on Read (simulates network/IO failure)
 type failingStatsReader struct{}
 

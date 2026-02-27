@@ -122,3 +122,39 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestSetReadyAndIsReady(t *testing.T) {
+	// Ensure initial state is cleaned up after the test
+	t.Cleanup(func() { SetReady(false) })
+
+	SetReady(true)
+	require.True(t, IsReady())
+
+	SetReady(false)
+	require.False(t, IsReady())
+}
+
+func TestValidate_EmptyServerGroups(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "at least one server group")
+}
+
+func TestValidate_MissingName(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{{URL: "http://localhost:3100"}},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "name is required")
+}
+
+func TestValidate_MissingURL(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{{Name: "loki1"}},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "url is required")
+}

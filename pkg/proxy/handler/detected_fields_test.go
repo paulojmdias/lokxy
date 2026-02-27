@@ -219,3 +219,53 @@ func TestDetectedFieldValues_InvalidJSONAndReaderErr(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 	require.Empty(t, out.Values)
 }
+
+func TestAddDetectedField_EmptyLabel(t *testing.T) {
+	// addDetectedField should silently skip entries with an empty label.
+	merged := make(map[string]*fieldAgg)
+	addDetectedField(merged, "", "keyword", 10, []string{"json"})
+	require.Empty(t, merged, "empty label should not be added to merged map")
+}
+
+func TestAddDetectedField_AccumulatesCardinality(t *testing.T) {
+	merged := make(map[string]*fieldAgg)
+	addDetectedField(merged, "level", "keyword", 5, []string{"json"})
+	addDetectedField(merged, "level", "", 3, []string{"logfmt"})
+
+	agg, ok := merged["level"]
+	require.True(t, ok)
+	require.Equal(t, 8, agg.cardinality)
+	require.Equal(t, "keyword", agg.typ) // first non-empty type is kept
+	require.Contains(t, agg.pset, "json")
+	require.Contains(t, agg.pset, "logfmt")
+}
+
+func TestHandleLokiDetectedFields_NilResponse(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	results <- &proxyresponse.BackendResponse{Response: nil, BackendName: "loki1"}
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiDetectedFields(t.Context(), w, results, logger)
+
+	var out LokiDetectedFieldsOut
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	require.Empty(t, out.Fields)
+}
+
+func TestHandleLokiDetectedFieldValues_NilResponse(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	results <- &proxyresponse.BackendResponse{Response: nil, BackendName: "loki1"}
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiDetectedFieldValues(t.Context(), w, results, "myfield", logger)
+
+	var out LokiDetectedFieldValuesResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	require.Empty(t, out.Values)
+}

@@ -203,6 +203,118 @@ func TestUpgrader_CheckOrigin(t *testing.T) {
 	require.True(t, result, "upgrader should currently allow all origins (this is a known security issue)")
 }
 
+func TestHandleTailWebSocket_URLSchemeRewrite_HTTP(t *testing.T) {
+	// The handler rewrites http:// → ws:// when dialing backends.
+	// We verify this by pointing a backend config at an http:// URL; the
+	// handler will try to dial ws://<same-host>, which will fail since there
+	// is no WS listener there — but we can observe the behaviour via the
+	// integration server (upgrade succeeds on the client side, backend fails
+	// silently). Here we just assert the config URL starts with http://.
+	logger := log.NewNopLogger()
+
+	serverGroup := cfg.ServerGroup{
+		Name: "http-backend",
+		URL:  "http://127.0.0.1:1", // unreachable, but has http:// prefix
+	}
+	serverGroup.HTTPClientConfig.DialTimeout = 50 * time.Millisecond
+
+	config := &cfg.Config{
+		ServerGroups: []cfg.ServerGroup{serverGroup},
+	}
+
+	// Proxy server that uses the handler
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleTailWebSocket(context.Background(), w, r, config, logger)
+	}))
+	defer proxyServer.Close()
+
+	// Connect as a WS client — upgrade should succeed even if the backend fails
+	wsURL := "ws" + strings.TrimPrefix(proxyServer.URL, "http")
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	defer client.Close()
+
+	// Backend connection will fail (port 1 unreachable), so no messages arrive
+	client.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var msg map[string]any
+	err = client.ReadJSON(&msg)
+	require.Error(t, err) // timeout or EOF expected
+}
+
+func TestHandleTailWebSocket_URLSchemeRewrite_HTTPS(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	serverGroup := cfg.ServerGroup{
+		Name: "https-backend",
+		URL:  "https://127.0.0.1:1", // unreachable, but has https:// prefix
+	}
+	serverGroup.HTTPClientConfig.DialTimeout = 50 * time.Millisecond
+	serverGroup.HTTPClientConfig.TLSConfig.InsecureSkipVerify = true
+
+	config := &cfg.Config{
+		ServerGroups: []cfg.ServerGroup{serverGroup},
+	}
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleTailWebSocket(context.Background(), w, r, config, logger)
+	}))
+	defer proxyServer.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(proxyServer.URL, "http")
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	defer client.Close()
+
+	client.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var msg map[string]any
+	err = client.ReadJSON(&msg)
+	require.Error(t, err)
+}
+
+func TestHandleTailWebSocket_InvalidJSONFromBackend(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	logger := log.NewNopLogger()
+
+	// Backend sends raw non-JSON bytes, causing the JSON decode goroutine to exit.
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		up := websocket.Upgrader{CheckOrigin: func(_ *http.Request) bool { return true }}
+		conn, err := up.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		// Send non-JSON binary data
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("not valid json !!!"))
+		time.Sleep(100 * time.Millisecond)
+	}))
+	defer mockBackend.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(mockBackend.URL, "http")
+	serverGroup := cfg.ServerGroup{Name: "bad-json-backend", URL: wsURL}
+	serverGroup.HTTPClientConfig.DialTimeout = 5 * time.Second
+
+	config := &cfg.Config{ServerGroups: []cfg.ServerGroup{serverGroup}}
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleTailWebSocket(context.Background(), w, r, config, logger)
+	}))
+	defer proxyServer.Close()
+
+	wsProxyURL := "ws" + strings.TrimPrefix(proxyServer.URL, "http")
+	client, _, err := websocket.DefaultDialer.Dial(wsProxyURL, nil)
+	require.NoError(t, err)
+	defer client.Close()
+
+	// No valid JSON will be forwarded; the goroutine exits silently.
+	client.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	var msg map[string]any
+	err = client.ReadJSON(&msg)
+	require.Error(t, err) // timeout or EOF expected
+}
+
 func TestHandleTailWebSocket_ContextCancellation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")

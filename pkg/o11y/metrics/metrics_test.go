@@ -8,6 +8,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestInitialize_MetricInstrumentsNonNil(t *testing.T) {
+	ctx := t.Context()
+	mp, err := Initialize(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mp.Shutdown(ctx) })
+
+	// All three instruments must be non-nil real implementations after init.
+	require.NotNil(t, RequestCount)
+	require.NotNil(t, RequestDuration)
+	require.NotNil(t, RequestFailures)
+}
+
+func TestNewServeMux_MetricsEndpoint(t *testing.T) {
+	ctx := t.Context()
+	mp, err := Initialize(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mp.Shutdown(ctx) })
+
+	mux := NewServeMux()
+	req, err := http.NewRequest(http.MethodGet, "/metrics", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	// Prometheus always emits Go runtime metrics
+	require.Contains(t, rr.Body.String(), "go_goroutines")
+}
+
 func TestInitMetrics(t *testing.T) {
 	ctx := t.Context()
 	mp, err := Initialize(ctx)
