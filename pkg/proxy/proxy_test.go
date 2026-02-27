@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
+	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
 // ---------- helpers ----------
@@ -463,4 +464,192 @@ func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 	responseBody := rr.Body.String()
 	require.Contains(t, responseBody, "sg1:")
 	require.Contains(t, responseBody, "connection refused")
+}
+
+// roundTripFunc lets us use a plain function as an http.RoundTripper in tests.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestRoundTrip_GzipDecompression(t *testing.T) {
+	plainText := []byte("hello from upstream")
+	gzipped := mkGzip(plainText)
+
+	inner := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Encoding": []string{"gzip"}},
+			Body:       io.NopCloser(bytes.NewReader(gzipped)),
+		}, nil
+	})
+
+	rt := &CustomRoundTripper{rt: inner, logger: log.NewNopLogger()}
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, plainText, body)
+}
+
+func TestCreateHTTPClient_NoTLS(t *testing.T) {
+	sg := cfg.ServerGroup{Name: "loki1", URL: "http://localhost:3100"}
+	client, err := createHTTPClient(sg, log.NewNopLogger())
+	require.NoError(t, err)
+	require.NotNil(t, client)
+}
+
+func TestCreateHTTPClient_InsecureSkipVerify(t *testing.T) {
+	sg := cfg.ServerGroup{Name: "loki1", URL: "https://localhost:3100"}
+	sg.HTTPClientConfig.TLSConfig.InsecureSkipVerify = true
+
+	client, err := createHTTPClient(sg, log.NewNopLogger())
+	require.NoError(t, err)
+	require.NotNil(t, client)
+}
+
+func TestCreateHTTPClient_InvalidCAFile(t *testing.T) {
+	sg := cfg.ServerGroup{Name: "loki1", URL: "https://localhost:3100"}
+	sg.HTTPClientConfig.TLSConfig.CAFile = "/nonexistent/ca.pem"
+
+	_, err := createHTTPClient(sg, log.NewNopLogger())
+	require.Error(t, err)
+}
+
+func TestCreateHTTPClient_InvalidCertKeyPair(t *testing.T) {
+	sg := cfg.ServerGroup{Name: "loki1", URL: "https://localhost:3100"}
+	sg.HTTPClientConfig.TLSConfig.CertFile = "/nonexistent/cert.pem"
+	sg.HTTPClientConfig.TLSConfig.KeyFile = "/nonexistent/key.pem"
+
+	_, err := createHTTPClient(sg, log.NewNopLogger())
+	require.Error(t, err)
+}
+
+func TestForwardFirstResponse_MultipleBackends(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body1 := "first backend body"
+	body2 := "second backend body"
+
+	results := make(chan *proxyresponse.BackendResponse, 2)
+	results <- &proxyresponse.BackendResponse{
+		BackendName: "loki1",
+		Response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"X-From": []string{"loki1"}},
+			Body:       io.NopCloser(strings.NewReader(body1)),
+		},
+	}
+	results <- &proxyresponse.BackendResponse{
+		BackendName: "loki2",
+		Response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"X-From": []string{"loki2"}},
+			Body:       io.NopCloser(strings.NewReader(body2)),
+		},
+	}
+	close(results)
+
+	w := httptest.NewRecorder()
+	forwardFirstResponse(t.Context(), w, results, logger)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, body1, w.Body.String())
+}
+
+func TestForwardFirstResponse_NoResponses(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse)
+	close(results)
+
+	w := httptest.NewRecorder()
+	forwardFirstResponse(t.Context(), w, results, logger)
+
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	require.Contains(t, w.Body.String(), "No healthy upstreams available")
+}
+
+func TestFanoutRequest_RequestBodyReadError(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	config := mkConfig(upstream.URL)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/labels", &errorReader{})
+
+	NewServeMux(logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+// errorReader always returns an error when Read is called.
+type errorReader struct{}
+
+func (e *errorReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+func TestProxyHandler_HTTPClientCreationFailure(t *testing.T) {
+	// If a ServerGroup has an invalid CA file, createHTTPClient fails during
+	// proxyHandler construction; the backend entry is skipped (no client added).
+	// A request to that path hits the "missing HTTP client" BackendError → 502.
+	logger := log.NewNopLogger()
+
+	badCfg := &cfg.Config{
+		ServerGroups: []cfg.ServerGroup{
+			{
+				Name: "badCA",
+				URL:  "http://localhost:3100",
+				HTTPClientConfig: func() cfg.HTTPClientConfig {
+					hc := cfg.HTTPClientConfig{}
+					hc.TLSConfig.CAFile = "/nonexistent/ca.pem"
+					return hc
+				}(),
+			},
+		},
+	}
+
+	mux := NewServeMux(logger, badCfg)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+	mux.ServeHTTP(rr, req)
+
+	// No client was created, so fanout returns "missing HTTP client" → 502.
+	require.Equal(t, http.StatusBadGateway, rr.Code)
+}
+
+func TestRoundTrip_UpstreamError(t *testing.T) {
+	// Covers the error-return path when the inner RoundTripper fails.
+	inner := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return nil, io.ErrUnexpectedEOF
+	})
+
+	rt := &CustomRoundTripper{rt: inner, logger: log.NewNopLogger()}
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	resp, err := rt.RoundTrip(req)
+	require.Error(t, err)
+	require.Nil(t, resp)
+}
+
+func TestRoundTrip_GzipNewReaderError(t *testing.T) {
+	// Covers the branch where response claims gzip but body is not valid gzip.
+	inner := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Encoding": []string{"gzip"}},
+			Body:       io.NopCloser(strings.NewReader("not gzip data")),
+		}, nil
+	})
+
+	rt := &CustomRoundTripper{rt: inner, logger: log.NewNopLogger()}
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	resp, err := rt.RoundTrip(req)
+	require.Error(t, err)
+	require.Nil(t, resp)
 }

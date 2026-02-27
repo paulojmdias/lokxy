@@ -477,6 +477,23 @@ func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
 	require.Len(t, encodingFlags, 3)
 }
 
+func TestHandleLokiQueries_EmptyBody(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	// Send a response with an empty JSON object — no recognised result type.
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(`{}`)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	// Should still produce a valid (empty) encoded response
+	require.NotEmpty(t, w.Body.Bytes())
+}
+
 // failingQueryReader always fails on Read (simulates network/IO failure)
 type failingQueryReader struct{}
 
