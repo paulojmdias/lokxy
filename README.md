@@ -1,7 +1,9 @@
 # Lokxy
+
 Lokxy is a powerful log aggregator for Loki, designed to collect and unify log streams from multiple sources into a single, queryable endpoint. It simplifies log management and enhances visibility across distributed environments, providing seamless integration with your existing Loki infrastructure.
 
 ## Table of Contents
+
 - [Motivation & Inspiration](#motivation-and-inspiration)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -24,6 +26,7 @@ We draw particular inspiration from **[Promxy](https://github.com/jacksontj/prom
 ---
 
 ## Requirements
+
 Before running **lokxy**, ensure the following are installed:
 
 - Go (v1.26+)
@@ -53,7 +56,7 @@ go build -o lokxy ./cmd/
 To run lokxy locally, use the following steps:
 
 1. Prepare your configuration file:
-Ensure you have a config.yaml file in your working directory (or provide its path during startup). See Configuration File for details.
+   Ensure you have a config.yaml file in your working directory (or provide its path during startup). See Configuration File for details.
 
 2. Run the proxy:
 
@@ -69,7 +72,6 @@ Alternatively, after building the binary, run:
 
 The application will start serving at the specified port as defined in your config.yaml.
 
-
 ## How to Run as a Container
 
 ```bash
@@ -83,11 +85,13 @@ This command binds the container to port 3100 and mounts the local config.yaml f
 We provide a `docker-compose.yml` file located in the mixin/play/ folder to help you quickly get Lokxy up and running using Docker.
 
 1. Navigate to the mixin/play directory
+
 ```sh
 cd mixin/play/
 ```
 
 2. Start Lokxy with Docker Compose
+
 ```sh
 docker-compose up
 ```
@@ -95,9 +99,10 @@ docker-compose up
 This will start 2 isolated Loki instances, 2 Promtail instances, 1 Lokxy and 1 Grafana. When it's up and running, you just need to open Grafana in http://localhost:3000, and see the data on Explore menu.
 
 You will found 3 different data sources on Grafana:
-* `loki1` -> Instance number 1 from Loki
-* `loki2` -> Instance number 2 from Loki
-* `lokxy` -> Datasource which will aggregate the data from both Loki instances
+
+- `loki1` -> Instance number 1 from Loki
+- `loki2` -> Instance number 2 from Loki
+- `lokxy` -> Datasource which will aggregate the data from both Loki instances
 
 ## Configuration File
 
@@ -134,26 +139,34 @@ server_groups:
 logging:
   level: "info"       # Available options: "debug", "info", "warn", "error"
   format: "json"      # Available options: "json", "logfmt"
+
+query_transformations:
+  - find: replace_me_server_replace_me
+    replace_template: "{{ .backend.Name }}"
 ```
 
 ### Configuration Options:
 
-* `server_groups`:
-    * `name`: A human-readable name for the Loki instance.
-    * `url`: The base URL of the Loki instance.
-    * `timeout`: Timeout for requests in seconds.
-    * `headers`: Custom headers to include in each request, such as authentication tokens.
-    * `http_client_config`: HTTP Client custom configurations
-        * `dial_timeout`: Timeout duration for establishing a connection. Defaults to 200ms.
-        * `tls_config`:
-            * `insecure_skip_verify`: If set to true, the client will not verify the server’s certificate chain or host name.
-            * `ca_file`: Path to a custom Certificate Authority (CA) certificate file to verify the server.
-            * `cert_file`: Path to the client certificate file for mutual TLS.
-            * `key_file`: Path to the client key file for mutual TLS.
+- `server_groups`:
+  - `name`: A human-readable name for the Loki instance.
+  - `url`: The base URL of the Loki instance.
+  - `timeout`: Timeout for requests in seconds.
+  - `headers`: Custom headers to include in each request, such as authentication tokens.
+  - `http_client_config`: HTTP Client custom configurations
+    - `dial_timeout`: Timeout duration for establishing a connection. Defaults to 200ms.
+    - `tls_config`:
+      - `insecure_skip_verify`: If set to true, the client will not verify the server’s certificate chain or host name.
+      - `ca_file`: Path to a custom Certificate Authority (CA) certificate file to verify the server.
+      - `cert_file`: Path to the client certificate file for mutual TLS.
+      - `key_file`: Path to the client key file for mutual TLS.
 
-* `logging`:
-    * `level`: Defines the log level (`debug`, `info`, `warn`, `error`).
-    * `format`: The log output format, either in `json` or `logfmt`.
+- `logging`:
+  - `level`: Defines the log level (`debug`, `info`, `warn`, `error`).
+  - `format`: The log output format, either in `json` or `logfmt`.
+- `query_transformations`:
+  - `find`: The text to search for in the query.
+  - `replace_template`: The Go text/template to replace the matched text with. This receives the following context for the template:
+    - `{"backend": $ServerGroup}`
 
 ### Tracing Configuration
 
@@ -166,19 +179,20 @@ Configure the trace export destination using standard OpenTelemetry environment 
 Once `lokxy` is running, you can query Loki instances by sending HTTP requests to the proxy.
 
 The following APIs are supported:
-* Querying Logs: `/loki/api/v1/query`
-* Querying Range: `/loki/api/v1/query_range`
-* Series API: `/loki/api/v1/series`
-* Index Stats API: `/loki/api/v1/index/stats`
-* Index Volume API: `/loki/api/v1/index/volume`
-* Index Volume Range API: `/loki/api/v1/index/volume`
-* Detected Labels API: `/loki/api/v1/detected_labels`
-* Labels API: `/loki/api/v1/labels`
-* Label Values API: `/loki/api/v1/label/{label_name}/values`
-* Detected Fields API: `/loki/api/v1/detected_fields`
-* Detected Field Values API: `/loki/api/v1/detected_field/{field_name}/values`
-* Patterns API: `/loki/api/v1/patterns`
-* Tailing Logs via WebSocket: `/loki/api/v1/tail`
+
+- Querying Logs: `/loki/api/v1/query`
+- Querying Range: `/loki/api/v1/query_range`
+- Series API: `/loki/api/v1/series`
+- Index Stats API: `/loki/api/v1/index/stats`
+- Index Volume API: `/loki/api/v1/index/volume`
+- Index Volume Range API: `/loki/api/v1/index/volume`
+- Detected Labels API: `/loki/api/v1/detected_labels`
+- Labels API: `/loki/api/v1/labels`
+- Label Values API: `/loki/api/v1/label/{label_name}/values`
+- Detected Fields API: `/loki/api/v1/detected_fields`
+- Detected Field Values API: `/loki/api/v1/detected_field/{field_name}/values`
+- Patterns API: `/loki/api/v1/patterns`
+- Tailing Logs via WebSocket: `/loki/api/v1/tail`
 
 ### Example Query:
 
