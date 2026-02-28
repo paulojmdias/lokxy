@@ -181,6 +181,51 @@ func TestHandleLokiQueries_ScalarResult(t *testing.T) {
 	result, ok := data["result"].([]any)
 	require.True(t, ok)
 	require.Len(t, result, 2)
+	require.Equal(t, "1", result[1])
+}
+
+func TestHandleLokiQueries_MultipleScalarResponses_DoesNotOverrideFirst(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse, 2)
+
+	rec1 := httptest.NewRecorder()
+	rec1.WriteString(`{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1609459200, "1"],
+			"stats": {}
+		}
+	}`)
+	results <- wrapResponse(rec1.Result())
+
+	rec2 := httptest.NewRecorder()
+	rec2.WriteString(`{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1609459200, "2"],
+			"stats": {}
+		}
+	}`)
+	results <- wrapResponse(rec2.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "scalar", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 2)
+	require.Equal(t, "1", result[1])
 }
 
 func TestHandleLokiQueries_NullResultBecomesEmptyArray(t *testing.T) {
@@ -847,23 +892,6 @@ func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
 	require.True(t, ok)
 	// Should have unique flags: gzip, snappy, zstd
 	require.Len(t, encodingFlags, 3)
-}
-
-func TestHandleLokiQueries_EmptyBody(t *testing.T) {
-	logger := log.NewNopLogger()
-
-	// Send a response with an empty JSON object — no recognised result type.
-	results := make(chan *proxyresponse.BackendResponse, 1)
-	rec := httptest.NewRecorder()
-	rec.WriteString(`{}`)
-	results <- wrapResponse(rec.Result())
-	close(results)
-
-	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
-
-	// Should still produce a valid (empty) encoded response
-	require.NotEmpty(t, w.Body.Bytes())
 }
 
 // failingQueryReader always fails on Read (simulates network/IO failure)

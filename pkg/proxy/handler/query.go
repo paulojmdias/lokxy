@@ -150,8 +150,18 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Scalar", "backend", backendResp.BackendName)
 				continue
 			}
-			scalarResult = scalar
-			hasScalarResult = true
+			if !hasScalarResult {
+				scalarResult = scalar
+				hasScalarResult = true
+			} else if scalarResult != scalar {
+				// Scalar isn't mergeable like streams/matrix/vector. Avoid overwriting the
+				// previously accepted scalar; keep first value and ignore mismatches.
+				level.Warn(logger).Log(
+					"msg", "Ignoring mismatched scalar result from backend",
+					"backend", backendResp.BackendName,
+				)
+				continue
+			}
 
 		default:
 			level.Warn(logger).Log(
