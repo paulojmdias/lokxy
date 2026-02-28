@@ -277,6 +277,27 @@ func TestHandleLokiSeries_ComplexLabels(t *testing.T) {
 	require.Equal(t, "us-west-2", series0["region"])
 }
 
+func TestHandleLokiSeries_EmptyData(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	// Empty but valid JSON series response — exercises the zero-result path.
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(`{"status":"success","data":[]}`)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiSeries(t.Context(), w, results, logger)
+
+	var out struct {
+		Status string              `json:"status"`
+		Data   []map[string]string `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	require.Empty(t, out.Data)
+}
+
 // failingSeriesReader always fails on Read (simulates network/IO failure)
 type failingSeriesReader struct{}
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -156,4 +157,67 @@ server_groups:
 	cancel()
 	err = eg.Wait()
 	require.NoError(t, err)
+}
+
+func TestRun_ListenerBindFailure(t *testing.T) {
+	// Occupy a port so the second bind attempt fails.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+	occupiedAddr := ln.Addr().String()
+
+	cfg, err := config.LoadConfig(writeTempConfig(t))
+	require.NoError(t, err)
+	logger := logging.ConfigureLogger(cfg.Logging)
+
+	ctx := t.Context()
+	// Pass the already-occupied address as the metrics bind address.
+	err = run(ctx, logger, cfg, "127.0.0.1:0", occupiedAddr)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to start")
+}
+
+func TestRun_ContextCancellation(t *testing.T) {
+	cfg, err := config.LoadConfig(writeTempConfig(t))
+	require.NoError(t, err)
+	logger := logging.ConfigureLogger(cfg.Logging)
+
+	ctx, cancel := context.WithCancel(t.Context())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, logger, cfg, "127.0.0.1:0", "127.0.0.1:0")
+	}()
+
+	// Let the servers start, then cancel.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("run() did not return after context cancellation")
+	}
+}
+
+// writeTempConfig writes a minimal valid config file and returns its path.
+func writeTempConfig(t *testing.T) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "lokxy-test-*.yaml")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.Remove(f.Name()) })
+
+	_, err = f.WriteString(`
+logging:
+  level: info
+  format: json
+server_groups:
+  - name: loki1
+    url: http://localhost:3100
+    timeout: 1
+`)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return f.Name()
 }

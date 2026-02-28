@@ -153,6 +153,21 @@ func TestHandleLokiDetectedLabelsResponseReaderError(t *testing.T) {
 	require.Empty(t, out.DetectedLabels)
 }
 
+func TestHandleLokiDetectedLabels_NilResponse(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	results <- &proxyresponse.BackendResponse{Response: nil, BackendName: "loki1"}
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiDetectedLabels(t.Context(), w, results, logger)
+
+	var out LokiDetectedLabelsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	require.Empty(t, out.DetectedLabels)
+}
+
 // failingDetectedLabelsReader always fails on Read
 type failingDetectedLabelsReader struct{}
 
