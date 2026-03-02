@@ -581,7 +581,7 @@ func TestHandleLokiQueries_WithCategorizedMetadataArrays(t *testing.T) {
 				{
 					"stream": {"app": "nginx"},
 					"values": [
-						["1609459200000000000", "{\"message\":\"Update event got: PlacesData 3415\"}", {"structuredMetadata": {"trace_id": "0242ac120002"}, "parsed": {"level": "info"}}],
+						["1609459200000000000", "{\"message\":\"Update event got: PlacesData 3415\"}", {"structuredMetadata": [["trace_id", "0242ac120002"]], "parsed": [["level", "info"]]}],
 						["1609459201000000000", "{\"message\":\"next log line\"}"]
 					]
 				}
@@ -625,8 +625,8 @@ func TestHandleLokiQueries_WithCategorizedMetadataArrays(t *testing.T) {
 
 	metadata, ok := firstValue[2].(map[string]any)
 	require.True(t, ok)
-	_, hasStructuredMetadata := metadata["structuredMetadata"].(map[string]any)
-	_, hasParsed := metadata["parsed"].(map[string]any)
+	_, hasStructuredMetadata := metadata["structuredMetadata"].([]any)
+	_, hasParsed := metadata["parsed"].([]any)
 	require.True(t, hasStructuredMetadata)
 	require.True(t, hasParsed)
 }
