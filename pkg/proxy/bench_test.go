@@ -116,10 +116,9 @@ func BenchmarkCustomRoundTripper_PlainBody(b *testing.B) {
 	rt := &CustomRoundTripper{rt: inner, logger: log.NewNopLogger()}
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		resp, err := rt.RoundTrip(req)
 		if err != nil {
 			b.Fatal(err)
@@ -143,10 +142,9 @@ func BenchmarkCustomRoundTripper_GzipBody(b *testing.B) {
 	rt := &CustomRoundTripper{rt: inner, logger: log.NewNopLogger()}
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		resp, err := rt.RoundTrip(req)
 		if err != nil {
 			b.Fatal(err)

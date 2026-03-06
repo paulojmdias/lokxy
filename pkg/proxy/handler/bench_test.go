@@ -37,7 +37,7 @@ var (
 // automatically via range).
 func makeResults(n int, body string) <-chan *proxyresponse.BackendResponse {
 	ch := make(chan *proxyresponse.BackendResponse, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		rec := httptest.NewRecorder()
 		rec.WriteString(body)
 		ch <- &proxyresponse.BackendResponse{
@@ -62,7 +62,7 @@ func BenchmarkHandleLokiLabels(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				b.StopTimer()
 				results := makeResults(tc.n, benchLabelsBody)
 				w := httptest.NewRecorder()
@@ -86,7 +86,7 @@ func BenchmarkHandleLokiQueries_Streams(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				b.StopTimer()
 				results := makeResults(tc.n, benchStreamsBody)
 				w := httptest.NewRecorder()
@@ -110,7 +110,7 @@ func BenchmarkHandleLokiSeries(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				b.StopTimer()
 				results := makeResults(tc.n, benchSeriesBody)
 				w := httptest.NewRecorder()
