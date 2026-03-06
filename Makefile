@@ -30,6 +30,10 @@ clean:
 test:
 	GO111MODULE=on $(GOCMD) test -race -mod=mod -coverpkg=./... -covermode=atomic -coverprofile=coverage.out -tags netgo,builtinassets ./...
 
+.PHONY: benchmark
+benchmark:
+	$(GOCMD) test -bench=. -benchmem -run=^$$ -count=10 ./...
+
 .PHONY: run
 run:
 	$(GOCMD) run \
