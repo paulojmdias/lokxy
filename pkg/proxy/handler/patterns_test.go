@@ -162,6 +162,21 @@ func TestHandleLokiPatterns_ResponseReaderError(t *testing.T) {
 	require.Empty(t, out.Data)
 }
 
+func TestHandleLokiPatterns_NilResponse(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	results <- &proxyresponse.BackendResponse{Response: nil, BackendName: "loki1"}
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiPatterns(t.Context(), w, results, logger)
+
+	var out LokiPatternsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	require.Empty(t, out.Data)
+}
+
 // failingPatternsReader always fails on Read (simulates network/IO failure).
 type failingPatternsReader struct{}
 

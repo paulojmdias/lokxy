@@ -418,21 +418,25 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					Data:        bodyBytes,
 				}
 			}
-			// Buffer the body while the upstream context is still alive.
-			// After wg.Wait() the errgroup context is cancelled, which would
-			// cause reads on an open HTTP body to return context.Canceled.
-			bodyBytes, err := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			respBodyBytes, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
 			if err != nil {
 				requestSpan.RecordError(err)
-				level.Error(p.logger).Log("msg", "Failed to buffer response body", "instance", instance.Name, "err", err)
+				requestSpan.SetStatus(codes.Error, "Failed to read upstream response body")
+				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
+					attribute.String("path", r.URL.Path),
+					attribute.String("method", r.Method),
+					attribute.String("instance", instance.Name),
+				))
+				level.Error(p.logger).Log("msg", "Failed to read upstream response body", "instance", instance.Name, "err", err)
 				return &proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,
 					BackendURL:  instance.URL,
 				}
 			}
-			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			resp.Body = io.NopCloser(bytes.NewReader(respBodyBytes))
+			resp.ContentLength = int64(len(respBodyBytes))
 			results <- &proxyresponse.BackendResponse{
 				Response:    resp,
 				BackendName: instance.Name,

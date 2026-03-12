@@ -1,6 +1,8 @@
 BUILD := build
 CONTAINER_ENGINE := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
-GO ?= go
+GOCMD?= go
+GOOS=$(shell $(GOCMD) env GOOS)
+GOARCH=$(shell $(GOCMD) env GOARCH)
 GOFILES := $(shell find . -name "*.go" -type f ! -path "./vendor/*")
 GOLANGCI_LINT_VERSION:=v2.9.0
 GOLANGCI_LINT ?= golangci-lint
@@ -9,36 +11,44 @@ GOIMPORTS ?= goimports
 VERSION := $(shell git describe --tags --abbrev=0)
 REVISION := $(shell git rev-parse --short HEAD)
 
+ifeq ($(GOOS),windows)
+	EXTENSION := .exe
+endif
+
 .PHONY: info
 info:
 	@echo "Using container engine: $(CONTAINER_ENGINE)"
-	@echo "Using Go: $(GO)"
+	@echo "Using Go: $(GOCMD)"
 	@echo "Using GolangCI-Lint: $(GOLANGCI_LINT)"
 
 .PHONY: clean
 clean:
-	$(GO) clean -i ./...
+	$(GOCMD) clean -i ./...
 	rm -rf $(BUILD)
 
 .PHONY: test
 test:
-	GO111MODULE=on $(GO) test -race -mod=mod -coverpkg=./... -covermode=atomic -coverprofile=coverage.out -tags netgo,builtinassets ./...
+	GO111MODULE=on $(GOCMD) test -race -mod=mod -coverpkg=./... -covermode=atomic -coverprofile=coverage.out -tags netgo,builtinassets ./...
+
+.PHONY: benchmark
+benchmark:
+	$(GOCMD) test -bench=. -benchmem -run=^$$ -count=10 ./...
 
 .PHONY: run
 run:
-	$(GO) run \
+	$(GOCMD) run \
 		-ldflags="-X main.Version=$(VERSION) \
 	  			  -X main.Revision=$(REVISION)" \
 		cmd/main.go
 
 .PHONY: lint-install
 lint-install:
-	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	$(GOCMD) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 .PHONY: fmt-install
 fmt-install:
-	$(GO) install mvdan.cc/gofumpt@latest
-	$(GO) install golang.org/x/tools/cmd/goimports@latest
+	$(GOCMD) install mvdan.cc/gofumpt@latest
+	$(GOCMD) install golang.org/x/tools/cmd/goimports@latest
 
 .PHONY: lint
 lint:
@@ -51,7 +61,7 @@ fmt:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -mod=mod -tags netgo,builtinassets \
+	CGO_ENABLED=0 $(GOCMD) build -mod=mod -tags netgo,builtinassets \
 		-ldflags="-X main.Version=$(VERSION) \
 		          -X main.Revision=$(REVISION)" \
 		-x -o lokxy ./cmd/
