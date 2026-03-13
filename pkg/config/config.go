@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sync/atomic"
+	"text/template"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -37,10 +38,33 @@ type LoggerConfig struct {
 	Format string `yaml:"format"`
 }
 
+// QueryTransformation represents a single query transformation configuration.
+type QueryTransformation struct {
+	Find            string               `yaml:"find"`
+	ReplaceTemplate QueryReplaceTemplate `yaml:"replace_template"`
+}
+
+// QueryReplaceTemplate represents a single replace option configuration.
+type QueryReplaceTemplate struct {
+	*template.Template
+}
+
+// UnmarshalYAML implements the interface expected by gopkg.in/yaml.v2
+func (ro *QueryReplaceTemplate) UnmarshalYAML(unmarshal func(any) error) error {
+	var raw string
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+	var err error
+	ro.Template, err = template.New("replace option").Parse(raw)
+	return err
+}
+
 // Config represents the overall proxy configuration
 type Config struct {
-	ServerGroups []ServerGroup `yaml:"server_groups"`
-	Logging      LoggerConfig  `yaml:"logging"`
+	ServerGroups         []ServerGroup         `yaml:"server_groups"`
+	Logging              LoggerConfig          `yaml:"logging"`
+	QueryTransformations []QueryTransformation `yaml:"query_transformations"`
 }
 
 // LoadConfig loads and parses the YAML configuration file
