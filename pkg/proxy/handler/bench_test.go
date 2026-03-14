@@ -82,27 +82,35 @@ func BenchmarkHandleLokiLabels(b *testing.B) {
 	}
 }
 
-func BenchmarkHandleLokiQueries_Streams(b *testing.B) {
+func BenchmarkHandleLokiQueries(b *testing.B) {
 	logger := log.NewNopLogger()
-	for _, tc := range []struct {
+	for _, payload := range []struct {
 		name string
-		n    int
+		body string
 	}{
-		{"1backend", 1},
-		{"2backends", 2},
-		{"5backends", 5},
+		{"streams", benchStreamsBody},
+		{"streams_with_flags", benchStreamsWithFlags},
 	} {
-		b.Run(tc.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for range b.N {
-				b.StopTimer()
-				results := makeResults(tc.n, benchStreamsBody)
-				w := httptest.NewRecorder()
-				b.StartTimer()
+		for _, tc := range []struct {
+			name string
+			n    int
+		}{
+			{"1backend", 1},
+			{"2backends", 2},
+			{"5backends", 5},
+		} {
+			b.Run(payload.name+"/"+tc.name, func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					b.StopTimer()
+					results := makeResults(tc.n, payload.body)
+					w := httptest.NewRecorder()
+					b.StartTimer()
 
-				HandleLokiQueries(context.Background(), w, results, logger)
-			}
-		})
+					HandleLokiQueries(context.Background(), w, results, logger)
+				}
+			})
+		}
 	}
 }
 
@@ -125,30 +133,6 @@ func BenchmarkHandleLokiSeries(b *testing.B) {
 				b.StartTimer()
 
 				HandleLokiSeries(context.Background(), w, results, logger)
-			}
-		})
-	}
-}
-
-func BenchmarkHandleLokiQueries_SingleParse(b *testing.B) {
-	logger := log.NewNopLogger()
-	for _, tc := range []struct {
-		name string
-		n    int
-	}{
-		{"1backend", 1},
-		{"2backends", 2},
-		{"5backends", 5},
-	} {
-		b.Run(tc.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for range b.N {
-				b.StopTimer()
-				results := makeResults(tc.n, benchStreamsWithFlags)
-				w := httptest.NewRecorder()
-				b.StartTimer()
-
-				HandleLokiQueries(context.Background(), w, results, logger)
 			}
 		})
 	}
