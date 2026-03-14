@@ -4,6 +4,7 @@ networks:
 volumes:
   grafana_data: {}
   flog_logs: {}
+  tempo_data: {}
 
 services:
   grafana:
@@ -107,12 +108,15 @@ services:
       - play
 
   tempo:
-    image: grafana/tempo:2.6.1
+    image: grafana/tempo:2.10.2
     container_name: tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./grafana/tempo.yaml:/etc/tempo.yaml
+      - tempo_data:/var/tempo
     ports:
       - "3200:3200"
+      - "4319:4317"
+      - "4320:4318"
     networks:
       - play

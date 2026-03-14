@@ -1,4 +1,5 @@
 stream_over_http_enabled: true
+
 server:
   http_listen_port: 3200
   log_level: info
@@ -7,6 +8,9 @@ query_frontend:
   search:
     duration_slo: 5s
     throughput_bytes_slo: 1.073741824e+09
+    metadata_slo:
+      duration_slo: 5s
+      throughput_bytes_slo: 1.073741824e+09
   trace_by_id:
     duration_slo: 5s
 
@@ -16,9 +20,15 @@ distributor:
       protocols:
         grpc:
           endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
 
 ingester:
   max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 720h
 
 metrics_generator:
   registry:
@@ -26,17 +36,24 @@ metrics_generator:
       source: tempo
       cluster: docker-compose
   storage:
-    path: /tmp/tempo/generator/wal
+    path: /var/tempo/generator/wal
+  traces_storage:
+    path: /var/tempo/generator/traces
+  processor:
+    local_blocks:
+      filter_server_spans: false
+      flush_to_storage: true
 
 storage:
   trace:
     backend: local
     wal:
-      path: /tmp/tempo/wal
+      path: /var/tempo/wal
     local:
-      path: /tmp/tempo/blocks
+      path: /var/tempo/blocks
 
 overrides:
   defaults:
     metrics_generator:
       processors: [service-graphs, span-metrics, local-blocks]
+      generate_native_histograms: both
