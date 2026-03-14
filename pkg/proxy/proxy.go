@@ -104,9 +104,14 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 	}
 
 	transport := &http.Transport{
-		TLSClientConfig:   tlsConfig,
-		DialContext:       dialer.DialContext,
-		DisableKeepAlives: false,
+		TLSClientConfig:       tlsConfig,
+		DialContext:           dialer.DialContext,
+		DisableKeepAlives:     false,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   20,
+		IdleConnTimeout:       90 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ForceAttemptHTTP2:     true,
 	}
 
 	client := &http.Client{
