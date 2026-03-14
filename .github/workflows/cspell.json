@@ -10,6 +10,8 @@
     "Hélia",
     "hostnames",
     "ingester",
+    "inmemory",
+    "kvstore",
     "loki",
     "Lokxy",
     "lokxy",
@@ -18,6 +20,7 @@
     "myapp",
     "mysecret",
     "nindent",
+    "otlphttp",
     "promtail",
     "Promtail",
     "referer",
@@ -28,4 +31,3 @@
     "Zipkin"
   ]
 }
-

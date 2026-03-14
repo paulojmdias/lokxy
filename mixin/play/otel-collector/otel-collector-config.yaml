@@ -12,6 +12,30 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  filelog/service1:
+    include:
+      - /var/log/flog/service1.log
+    start_at: beginning
+    operators:
+      - type: json_parser
+  filelog/service2:
+    include:
+      - /var/log/flog/service2.log
+    start_at: beginning
+    operators:
+      - type: json_parser
+
+processors:
+  resource/service1:
+    attributes:
+      - action: upsert
+        key: service.name
+        value: service1
+  resource/service2:
+    attributes:
+      - action: upsert
+        key: service.name
+        value: service2
 
 exporters:
   debug:
@@ -20,6 +44,10 @@ exporters:
     endpoint: http://tempo:4317
     tls:
       insecure: true
+  otlphttp/loki1:
+    endpoint: http://loki1:3101/otlp
+  otlphttp/loki2:
+    endpoint: http://loki2:3102/otlp
 
 service:
   pipelines:
@@ -29,3 +57,11 @@ service:
     traces:
       receivers: [otlp]
       exporters: [otlp]
+    logs/loki1:
+      receivers: [filelog/service1]
+      processors: [resource/service1]
+      exporters: [otlphttp/loki1]
+    logs/loki2:
+      receivers: [filelog/service2]
+      processors: [resource/service2]
+      exporters: [otlphttp/loki2]
