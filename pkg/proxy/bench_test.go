@@ -153,3 +153,35 @@ func BenchmarkCustomRoundTripper_GzipBody(b *testing.B) {
 		_ = resp.Body.Close()
 	}
 }
+
+func BenchmarkProxy_Labels_ConnectionReuse(b *testing.B) {
+	// Measures fan-out performance where connection pool tuning matters.
+	// With proper pool settings, connections are reused across iterations.
+	for _, tc := range []struct {
+		name string
+		n    int
+	}{
+		{"1backend", 1},
+		{"2backends", 2},
+		{"5backends", 5},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			benchmarkFanOut(b, tc.n, "/loki/api/v1/labels", benchLabelsJSON)
+		})
+	}
+}
+
+func BenchmarkProxy_QueryRange_ConnectionReuse(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		n    int
+	}{
+		{"1backend", 1},
+		{"2backends", 2},
+		{"5backends", 5},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			benchmarkFanOut(b, tc.n, "/loki/api/v1/query_range", benchQueryRangeJSON)
+		})
+	}
+}

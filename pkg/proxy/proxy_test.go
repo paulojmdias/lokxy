@@ -653,3 +653,28 @@ func TestRoundTrip_GzipNewReaderError(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, resp)
 }
+
+func TestCreateHTTPClient_ConnectionPoolSettings(t *testing.T) {
+	sg := cfg.ServerGroup{
+		Name:    "pool-test",
+		URL:     "http://localhost:3100",
+		Timeout: 5,
+	}
+
+	client, err := createHTTPClient(sg, log.NewNopLogger())
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	// Unwrap CustomRoundTripper to get at the underlying Transport
+	crt, ok := client.Transport.(*CustomRoundTripper)
+	require.True(t, ok, "expected CustomRoundTripper wrapper")
+
+	transport, ok := crt.rt.(*http.Transport)
+	require.True(t, ok, "expected *http.Transport as inner round tripper")
+
+	require.Equal(t, 100, transport.MaxIdleConns)
+	require.Equal(t, 20, transport.MaxIdleConnsPerHost)
+	require.Equal(t, 90*time.Second, transport.IdleConnTimeout)
+	require.Equal(t, 1*time.Second, transport.ExpectContinueTimeout)
+	require.True(t, transport.ForceAttemptHTTP2)
+}
