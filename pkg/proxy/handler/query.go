@@ -44,7 +44,7 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 
 		// Log the full body for debugging (guard to avoid string copy when debug is off)
 		if ce := level.Debug(logger); ce != nil {
-			ce.Log("msg", "Complete body received", "body", string(bodyBytes))
+			_ = ce.Log("msg", "Complete body received", "body", string(bodyBytes))
 		}
 
 		// Single parse into loghttp.QueryResponse
