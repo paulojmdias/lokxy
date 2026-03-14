@@ -27,6 +27,15 @@ var (
 	// RequestFailures counts the total number of requests that resulted in an
 	// error or failure during processing.
 	RequestFailures metric.Int64Counter = noop.Int64Counter{}
+
+	// LogvolhistTotal counts the total number of logvolhist queries processed,
+	// labeled by action (rewrite, redirect, parse_error).
+	LogvolhistTotal metric.Int64Counter = noop.Int64Counter{}
+
+	// LogvolhistDuration records the duration of logvolhist query processing
+	// in seconds (the overhead of detection + rewriting/redirect, not the
+	// upstream query time).
+	LogvolhistDuration metric.Float64Histogram = noop.Float64Histogram{}
 )
 
 // Initialize prepares the OpenTelemetry metric pipeline for the service.
@@ -102,6 +111,23 @@ func createMetrics() error {
 	if err != nil {
 		return fmt.Errorf("failed to create RequestFailures metric: %w", err)
 	}
+
+	LogvolhistTotal, err = meter.Int64Counter("lokxy_logvolhist_total",
+		metric.WithDescription("Total logvolhist queries processed by action"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create LogvolhistTotal metric: %w", err)
+	}
+
+	LogvolhistDuration, err = meter.Float64Histogram("lokxy_logvolhist_duration_seconds",
+		metric.WithDescription("Logvolhist query processing duration in seconds"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create LogvolhistDuration metric: %w", err)
+	}
+
 	return nil
 }
 

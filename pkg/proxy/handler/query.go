@@ -5,18 +5,21 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats" // For statistics
+	"github.com/prometheus/common/model"
 
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
 // Handle Loki query and query_range responses
-func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
 	var mergedVector loghttp.Vector
@@ -143,6 +146,19 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 		finalResult = formattedResults
 
 	case loghttp.ResultTypeMatrix:
+		// Apply post-processing if step override is active.
+		if stepInfo, ok := GetStepInfo(ctx); ok {
+			if stepInfo.OriginalStep > stepInfo.ConfiguredStep && stepInfo.OriginalStep > 0 {
+				if stepInfo.AggregateSum {
+					// Logvolhist: sum values per bucket (count_over_time produces counts)
+					mergedMatrix = aggregateMatrix(mergedMatrix, stepInfo.OriginalStep, logger)
+				} else {
+					// Generic: keep last value per bucket (gauge-like metrics)
+					mergedMatrix = downsampleMatrix(mergedMatrix, stepInfo.OriginalStep, logger)
+				}
+			}
+		}
+
 		var formattedMatrix []map[string]any
 		for _, matrixEntry := range mergedMatrix {
 			values := make([][]any, len(matrixEntry.Values))
@@ -196,4 +212,144 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
 		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
 	}
+}
+
+// downsampleMatrix downsamples matrix data to match the target step.
+// It aligns timestamps to step boundaries and takes the last value in each bucket.
+// This ensures compatibility with Grafana's lokiQuerySplitting feature.
+func downsampleMatrix(matrix loghttp.Matrix, targetStep time.Duration, logger log.Logger) loghttp.Matrix {
+	if targetStep <= 0 {
+		return matrix
+	}
+
+	targetStepMs := targetStep.Milliseconds()
+	result := make(loghttp.Matrix, 0, len(matrix))
+
+	for _, series := range matrix {
+		if len(series.Values) == 0 {
+			result = append(result, series)
+			continue
+		}
+
+		// Sort values by timestamp first
+		sortedValues := make([]model.SamplePair, len(series.Values))
+		copy(sortedValues, series.Values)
+		sort.Slice(sortedValues, func(i, j int) bool {
+			return sortedValues[i].Timestamp < sortedValues[j].Timestamp
+		})
+
+		// Group values into buckets aligned to step boundaries
+		// and take the last value in each bucket
+		buckets := make(map[int64]model.SamplePair)
+
+		for _, sample := range sortedValues {
+			sampleMs := int64(sample.Timestamp)
+			// Align to step boundary (floor to nearest step)
+			bucketTimestamp := (sampleMs / targetStepMs) * targetStepMs
+			// Always keep the last value for each bucket
+			buckets[bucketTimestamp] = model.SamplePair{
+				Timestamp: model.Time(bucketTimestamp),
+				Value:     sample.Value,
+			}
+		}
+
+		// Convert map to sorted slice
+		downsampled := make([]model.SamplePair, 0, len(buckets))
+		for _, sample := range buckets {
+			downsampled = append(downsampled, sample)
+		}
+		sort.Slice(downsampled, func(i, j int) bool {
+			return downsampled[i].Timestamp < downsampled[j].Timestamp
+		})
+
+		// Create new series with downsampled values
+		newSeries := model.SampleStream{
+			Metric: series.Metric,
+			Values: downsampled,
+		}
+		result = append(result, newSeries)
+	}
+
+	level.Debug(logger).Log(
+		"msg", "Downsampled matrix data for Grafana alignment",
+		"original_series", len(matrix),
+		"target_step", targetStep.String(),
+	)
+
+	return result
+}
+
+// aggregateMatrix aggregates matrix data by summing values within each time bucket
+// aligned to targetStep boundaries. This is used for logvolhist queries where
+// count_over_time produces additive counts: querying Loki at 1m resolution and
+// summing into Grafana's requested step (e.g., 1h) yields accurate totals.
+//
+// Unlike downsampleMatrix (which keeps the last value per bucket for gauge-like
+// data), aggregateMatrix sums all values -- correct for counters produced by
+// count_over_time, bytes_over_time, etc.
+func aggregateMatrix(matrix loghttp.Matrix, targetStep time.Duration, logger log.Logger) loghttp.Matrix {
+	if targetStep <= 0 {
+		return matrix
+	}
+
+	targetStepMs := targetStep.Milliseconds()
+	result := make(loghttp.Matrix, 0, len(matrix))
+
+	for _, series := range matrix {
+		if len(series.Values) == 0 {
+			result = append(result, series)
+			continue
+		}
+
+		// Sort values by timestamp
+		sortedValues := make([]model.SamplePair, len(series.Values))
+		copy(sortedValues, series.Values)
+		sort.Slice(sortedValues, func(i, j int) bool {
+			return sortedValues[i].Timestamp < sortedValues[j].Timestamp
+		})
+
+		// Group values into step-aligned buckets and sum
+		type bucket struct {
+			sum model.SampleValue
+		}
+		buckets := make(map[int64]*bucket)
+		bucketOrder := make([]int64, 0) // preserve insertion order
+
+		for _, sample := range sortedValues {
+			sampleMs := int64(sample.Timestamp)
+			bucketTs := (sampleMs / targetStepMs) * targetStepMs
+			b, exists := buckets[bucketTs]
+			if !exists {
+				b = &bucket{}
+				buckets[bucketTs] = b
+				bucketOrder = append(bucketOrder, bucketTs)
+			}
+			b.sum += sample.Value
+		}
+
+		// Convert to sorted slice
+		aggregated := make([]model.SamplePair, 0, len(bucketOrder))
+		sort.Slice(bucketOrder, func(i, j int) bool {
+			return bucketOrder[i] < bucketOrder[j]
+		})
+		for _, ts := range bucketOrder {
+			aggregated = append(aggregated, model.SamplePair{
+				Timestamp: model.Time(ts),
+				Value:     buckets[ts].sum,
+			})
+		}
+
+		result = append(result, model.SampleStream{
+			Metric: series.Metric,
+			Values: aggregated,
+		})
+	}
+
+	level.Debug(logger).Log(
+		"msg", "Aggregated matrix data for logvolhist",
+		"series", len(matrix),
+		"target_step", targetStep.String(),
+	)
+
+	return result
 }

@@ -13,10 +13,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -28,6 +30,12 @@ import (
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
+)
+
+// Paths that support the step parameter
+const (
+	pathQueryRange  = "/loki/api/v1/query_range"
+	pathVolumeRange = "/loki/api/v1/index/volume_range"
 )
 
 // CustomRoundTripper intercepts the request and response
@@ -165,10 +173,85 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		})
 	})
 
-	// Variable to hold the API routes and their corresponding handlers
+	// Dedicated query_range handler with logvolhist detection.
+	// Extracted from the generic apiRoutes map so logvolhist queries
+	// can be branched into a separate processing path.
+	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(attribute.String("proxy.route_type", "query_range"))
+		ctx := r.Context()
+
+		if config.API.Logvolhist.Enabled && isLogvolhistQuery(r) {
+			span.SetAttributes(attribute.Bool("proxy.logvolhist", true))
+
+			// LVH-07: Measure logvolhist processing duration
+			lvhStart := time.Now()
+			defer func() {
+				metrics.LogvolhistDuration.Record(ctx, time.Since(lvhStart).Seconds())
+			}()
+
+			originalQuery := r.URL.Query().Get("query")
+			level.Info(p.logger).Log("msg", "Logvolhist query detected", "query", originalQuery)
+
+			// Capture Grafana's original step before rewriting
+			grafanaStepStr := r.URL.Query().Get("step")
+
+			// Apply logvolhist timeout if configured (LVH-05)
+			if config.API.Logvolhist.Timeout != "" {
+				if d, err := model.ParseDuration(config.API.Logvolhist.Timeout); err == nil {
+					var cancel context.CancelFunc
+					ctx, cancel = context.WithTimeout(ctx, time.Duration(d))
+					defer cancel()
+				}
+			}
+
+			// Rewrite LogQL range vector + step (LVH-03 / LVH-04)
+			span.SetAttributes(attribute.String("proxy.logvolhist_action", "rewrite"))
+			metrics.LogvolhistTotal.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("action", "rewrite"),
+			))
+
+			r = rewriteLogvolhistRequest(r, config, p.logger)
+
+			// If Grafana's original step > config step, enable response aggregation.
+			// This queries Loki at the fine-grained config step (e.g. 1m) for accuracy,
+			// then sums values back to Grafana's requested step (e.g. 1h) before returning.
+			if grafanaStepStr != "" && config.API.QueryRange.Step != "" {
+				grafanaStep, errG := parseStep(grafanaStepStr)
+				configStep, errC := parseStep(config.API.QueryRange.Step)
+				if errG == nil && errC == nil && grafanaStep > configStep {
+					level.Info(p.logger).Log(
+						"msg", "Logvolhist aggregation enabled",
+						"grafana_step", grafanaStep,
+						"config_step", configStep,
+					)
+					span.SetAttributes(attribute.String("proxy.logvolhist_aggregate", grafanaStep.String()))
+					ctx = handler.WithStepInfo(ctx, handler.StepInfo{
+						OriginalStep:   grafanaStep,
+						ConfiguredStep: configStep,
+						AggregateSum:   true,
+					})
+				}
+			}
+
+			p.fanoutRequest(w, r.WithContext(ctx), handler.HandleLokiQueries)
+			return
+		}
+
+		// Non-logvolhist: apply generic step override
+		stepConfig := getStepConfig(r, config)
+		if stepConfig.HasOverride && stepConfig.OriginalStep > 0 {
+			ctx = handler.WithStepInfo(ctx, handler.StepInfo{
+				OriginalStep:   stepConfig.OriginalStep,
+				ConfiguredStep: stepConfig.ConfiguredStep,
+			})
+		}
+		p.fanoutRequest(w, r.WithContext(ctx), handler.HandleLokiQueries)
+	})
+
+	// Remaining API routes and their corresponding handlers
 	apiRoutes := map[string]transformFn{
 		"/loki/api/v1/query":              handler.HandleLokiQueries,
-		"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 		"/loki/api/v1/series":             handler.HandleLokiSeries,
 		"/loki/api/v1/index/stats":        handler.HandleLokiStats,
 		"/loki/api/v1/labels":             handler.HandleLokiLabels,
@@ -182,7 +265,16 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			span := trace.SpanFromContext(r.Context())
 			span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
-			p.fanoutRequest(w, r, handlerFunc)
+			// Add step info to context for query_range endpoints
+			ctx := r.Context()
+			stepConfig := getStepConfig(r, config)
+			if stepConfig.HasOverride && stepConfig.OriginalStep > 0 {
+				ctx = handler.WithStepInfo(ctx, handler.StepInfo{
+					OriginalStep:   stepConfig.OriginalStep,
+					ConfiguredStep: stepConfig.ConfiguredStep,
+				})
+			}
+			p.fanoutRequest(w, r.WithContext(ctx), handlerFunc)
 		})
 	}
 
@@ -300,10 +392,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				}
 			}
 
-			targetURL := instance.URL + r.URL.Path
-			if r.URL.RawQuery != "" {
-				targetURL += "?" + r.URL.RawQuery
-			}
+			targetURL := buildTargetURL(instance.URL, r, p.config)
 
 			requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
 
@@ -465,4 +554,141 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 	// Combine responses into expected response
 	fn(r.Context(), w, results, p.logger)
+}
+
+// StepConfig holds step configuration for a request
+type StepConfig struct {
+	OriginalStep   time.Duration
+	ConfiguredStep time.Duration
+	HasOverride    bool
+}
+
+// getStepConfig extracts step configuration for the request
+func getStepConfig(r *http.Request, config *cfg.Config) StepConfig {
+	path := r.URL.Path
+	result := StepConfig{}
+
+	// Determine configured step based on path
+	var configuredStepStr string
+	switch path {
+	case pathQueryRange:
+		configuredStepStr = config.API.QueryRange.Step
+	case pathVolumeRange:
+		configuredStepStr = config.API.VolumeRange.Step
+	}
+
+	// Parse configured step
+	if configuredStepStr != "" {
+		if d, err := model.ParseDuration(configuredStepStr); err == nil {
+			result.ConfiguredStep = time.Duration(d)
+			result.HasOverride = true
+		}
+	}
+
+	// Parse original step from request
+	originalStepStr := r.URL.Query().Get("step")
+	if originalStepStr != "" {
+		if d, err := model.ParseDuration(originalStepStr); err == nil {
+			result.OriginalStep = time.Duration(d)
+		}
+	}
+
+	return result
+}
+
+// buildTargetURL constructs the target URL for the upstream request,
+// injecting the configured step parameter if applicable.
+func buildTargetURL(instanceURL string, r *http.Request, config *cfg.Config) string {
+	path := r.URL.Path
+	targetURL := instanceURL + path
+
+	// Determine if we need to inject a step parameter
+	var configuredStep string
+	switch path {
+	case pathQueryRange:
+		configuredStep = config.API.QueryRange.Step
+	case pathVolumeRange:
+		configuredStep = config.API.VolumeRange.Step
+	}
+
+	// If no step is configured, just append the original query string
+	if configuredStep == "" {
+		if r.URL.RawQuery != "" {
+			targetURL += "?" + r.URL.RawQuery
+		}
+		return targetURL
+	}
+
+	// Parse query parameters and inject/override step
+	query := r.URL.Query()
+	query.Set("step", configuredStep)
+	targetURL += "?" + query.Encode()
+
+	return targetURL
+}
+
+// isLogvolhistQuery returns true if the request is a Grafana Logs Volume histogram query.
+// Grafana sends "X-Query-Tags: Source=logvolhist" on these requests.
+func isLogvolhistQuery(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("X-Query-Tags"), "logvolhist")
+}
+
+// rewriteLogvolhistRequest rewrites the request URL for logvolhist queries:
+// 1. Parses the LogQL expression and rewrites the range vector interval
+// 2. Sets the step URL parameter to match the rewritten interval
+// Both must be coordinated so that step == range vector duration.
+//
+// Uses config.API.QueryRange.Step as the target duration (unified config approach).
+// If parsing fails, the request is returned unmodified (fail-open).
+func rewriteLogvolhistRequest(r *http.Request, config *cfg.Config, logger log.Logger) *http.Request {
+	stepStr := config.API.QueryRange.Step
+	if stepStr == "" {
+		return r
+	}
+
+	d, err := model.ParseDuration(stepStr)
+	if err != nil {
+		level.Error(logger).Log("msg", "Failed to parse query_range.step for logvolhist", "step", stepStr, "err", err)
+		return r
+	}
+	minStep := time.Duration(d)
+
+	// Get the LogQL query from URL parameters
+	params := r.URL.Query()
+	originalQuery := params.Get("query")
+	if originalQuery == "" {
+		return r
+	}
+
+	// Rewrite the range vector interval in the LogQL expression
+	rewrittenQuery, rewritten, err := rewriteRangeVector(originalQuery, minStep)
+	if err != nil {
+		level.Warn(logger).Log(
+			"msg", "Failed to parse logvolhist LogQL, forwarding unmodified",
+			"query", originalQuery,
+			"err", err,
+		)
+		return r
+	}
+
+	if rewritten {
+		level.Info(logger).Log(
+			"msg", "Rewriting logvolhist query",
+			"original_query", originalQuery,
+			"rewritten_query", rewrittenQuery,
+			"step", stepStr,
+		)
+		params.Set("query", rewrittenQuery)
+	}
+
+	// Always set step to query_range.step for logvolhist queries, regardless of
+	// whether the range vector was rewritten (the original step from Grafana is
+	// typically too small for the proxy's purposes).
+	params.Set("step", stepStr)
+
+	// Clone the request and update the URL
+	r2 := r.Clone(r.Context())
+	r2.URL.RawQuery = params.Encode()
+
+	return r2
 }

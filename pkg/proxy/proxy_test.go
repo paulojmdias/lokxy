@@ -446,6 +446,106 @@ func TestProxy_UnreachableBackend_ReturnsConnectionError(t *testing.T) {
 	require.Contains(t, responseBody, "connection refused")
 }
 
+func TestProxy_QueryRange_StepInjectedIntoUpstream(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var receivedStep string
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query_range": func(w http.ResponseWriter, r *http.Request) {
+			receivedStep = r.URL.Query().Get("step")
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[],"stats":{}}}`)
+		},
+	})
+	defer s1.Close()
+
+	config := mkConfig(s1.URL)
+	config.API.QueryRange.Step = "1m"
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?query={app=%22x%22}&step=10s&start=0&end=60", nil)
+
+	NewServeMux(logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "1m", receivedStep, "configured step should override the client's step")
+}
+
+func TestProxy_QueryRange_NoStepConfig_OriginalStepPreserved(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var receivedStep string
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query_range": func(w http.ResponseWriter, r *http.Request) {
+			receivedStep = r.URL.Query().Get("step")
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[],"stats":{}}}`)
+		},
+	})
+	defer s1.Close()
+
+	config := mkConfig(s1.URL)
+	// No step configured
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?step=30s&start=0&end=60", nil)
+
+	NewServeMux(logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "30s", receivedStep, "original step should be forwarded unchanged when no override is configured")
+}
+
+func TestProxy_VolumeRange_StepInjectedIntoUpstream(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var receivedStep string
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/index/volume_range": func(w http.ResponseWriter, r *http.Request) {
+			receivedStep = r.URL.Query().Get("step")
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"status":"success","data":{"resultType":"matrix","result":[],"stats":{}}}`)
+		},
+	})
+	defer s1.Close()
+
+	config := mkConfig(s1.URL)
+	config.API.VolumeRange.Step = "5m"
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/index/volume_range?step=10s&start=0&end=300", nil)
+
+	NewServeMux(logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "5m", receivedStep, "configured volume_range step should override the client's step")
+}
+
+func TestProxy_QueryRange_StepConfigDoesNotAffectInstantQuery(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var receivedStep string
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query": func(w http.ResponseWriter, r *http.Request) {
+			receivedStep = r.URL.Query().Get("step")
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"status":"success","data":{"resultType":"vector","result":[],"stats":{}}}`)
+		},
+	})
+	defer s1.Close()
+
+	config := mkConfig(s1.URL)
+	config.API.QueryRange.Step = "1m"
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query?step=30s", nil)
+
+	NewServeMux(logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "30s", receivedStep, "query_range step config should not affect instant /query endpoint")
+}
+
 func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 	logger := log.NewNopLogger()
 
