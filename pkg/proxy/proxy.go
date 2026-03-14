@@ -341,9 +341,11 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 			traces.InjectTraceToHTTPRequest(upstreamCtx, req)
 
-			for name, headers := range req.Header {
-				for _, h := range headers {
-					level.Debug(p.logger).Log("msg", "Request Header", "Name", name, "Value", h)
+			if ce := level.Debug(p.logger); ce != nil {
+				for name, headers := range req.Header {
+					for _, h := range headers {
+						_ = ce.Log("msg", "Request Header", "Name", name, "Value", h)
+					}
 				}
 			}
 
