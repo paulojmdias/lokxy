@@ -3,6 +3,7 @@ networks:
 
 volumes:
   grafana_data: {}
+  flog_logs: {}
 
 services:
   grafana:
@@ -31,29 +32,11 @@ services:
     container_name: loki1
     ports:
       - "3101:3101"
-    command: -config.file=/etc/loki/local-config.yaml -server.http-listen-port=3101
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/config.yaml
+    command: -config.file=/etc/loki/config.yaml -server.http-listen-port=3101
     expose:
       - 3101
-    networks:
-      - play
-
-  promtail1:
-    image: grafana/promtail:latest
-    container_name: promtail1
-    volumes:
-      - /var/log:/var/log
-      - /tmp:/tmp
-      - "./promtail:/config"
-    command: -config.file=/config/promtail1.yml
-    networks:
-      - play
-
-  flog1:
-    image: mingrammer/flog:latest
-    container_name: flog1
-    volumes:
-      - /tmp:/tmp
-    command: -f json -d 500ms -l -o /tmp/flog1.log -t log -w
     networks:
       - play
 
@@ -62,29 +45,31 @@ services:
     container_name: loki2
     ports:
       - "3102:3102"
-    command: -config.file=/etc/loki/local-config.yaml -server.http-listen-port=3102
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/config.yaml
+    command: -config.file=/etc/loki/config.yaml -server.http-listen-port=3102
     expose:
       - 3102
     networks:
       - play
 
-  promtail2:
-    image: grafana/promtail:latest
-    container_name: promtail2
+  flog1:
+    image: mingrammer/flog:latest
+    container_name: flog1
+    command: -f json -d 200ms -l -o /var/log/flog/service1.log -t log -w
     volumes:
-      - /var/log:/var/log
-      - /tmp:/tmp
-      - "./promtail:/config"
-    command: -config.file=/config/promtail2.yml
+      - flog_logs:/var/log/flog
+    restart: unless-stopped
     networks:
       - play
 
   flog2:
     image: mingrammer/flog:latest
     container_name: flog2
+    command: -f json -d 200ms -l -o /var/log/flog/service2.log -t log -w
     volumes:
-      - /tmp:/tmp
-    command: -f common_log -d 500ms -l -o /tmp/flog2.log -t log -w
+      - flog_logs:/var/log/flog
+    restart: unless-stopped
     networks:
       - play
 
@@ -110,20 +95,24 @@ services:
     command: --config=/config/otel-collector-config.yaml
     volumes:
       - ./otel-collector:/config
+      - flog_logs:/var/log/flog:ro
     ports:
       - "4317:4317"
       - "4318:4318"
       - "8888:8888"
+    depends_on:
+      - flog1
+      - flog2
     networks:
       - play
 
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.6.1
+    container_name: tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./grafana/tempo.yaml:/etc/tempo.yaml
     ports:
-      - "3200"
-      - "4317"
+      - "3200:3200"
     networks:
       - play
