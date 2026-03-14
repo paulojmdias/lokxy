@@ -15,6 +15,14 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
+// encodingFlagsEnvelope is a lightweight struct for extracting encodingFlags
+// without a full map[string]any unmarshal.
+type encodingFlagsEnvelope struct {
+	Data struct {
+		EncodingFlags []string `json:"encodingFlags"`
+	} `json:"data"`
+}
+
 // Handle Loki query and query_range responses
 func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
 	var mergedStreams []loghttp.Stream
@@ -34,38 +42,24 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 			continue
 		}
 
-		// Log the full body for debugging
-		level.Debug(logger).Log("msg", "Complete body received", "body", string(bodyBytes))
-
-		// Decode into map[string]any to inspect the raw structure
-		var rawBody map[string]any
-		bodyStr := string(bodyBytes)
-		if json.Valid(bodyBytes) {
-			if err := json.Unmarshal(bodyBytes, &rawBody); err != nil {
-				level.Error(logger).Log("msg", "Failed to decode JSON", "err", err)
-			} else {
-				level.Debug(logger).Log("msg", "Raw JSON body", "rawBody", bodyStr)
-			}
-		} else {
-			level.Debug(logger).Log("msg", "Raw body is not JSON", "rawBody", bodyStr)
+		// Log the full body for debugging (guard to avoid string copy when debug is off)
+		if ce := level.Debug(logger); ce != nil {
+			ce.Log("msg", "Complete body received", "body", string(bodyBytes))
 		}
 
-		// Check if encodingFlags is present in the response and extract it
-		if data, ok := rawBody["data"].(map[string]any); ok {
-			if flags, ok := data["encodingFlags"].([]any); ok {
-				for _, flag := range flags {
-					if flagStr, ok := flag.(string); ok {
-						encodingFlagsMap[flagStr] = struct{}{} // Add to map for uniqueness
-					}
-				}
-			}
-		}
-
-		// Attempt to decode into the expected loghttp.QueryResponse structure
+		// Single parse into loghttp.QueryResponse
 		var queryResult loghttp.QueryResponse
 		if err := json.Unmarshal(bodyBytes, &queryResult); err != nil {
 			level.Error(logger).Log("msg", "Failed to unmarshal into loghttp.QueryResponse", "err", err)
 			continue
+		}
+
+		// Extract encodingFlags with a lightweight targeted unmarshal
+		var envelope encodingFlagsEnvelope
+		if err := json.Unmarshal(bodyBytes, &envelope); err == nil {
+			for _, flag := range envelope.Data.EncodingFlags {
+				encodingFlagsMap[flag] = struct{}{}
+			}
 		}
 
 		resultType = queryResult.Data.ResultType

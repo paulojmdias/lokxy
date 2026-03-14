@@ -112,3 +112,44 @@ func BenchmarkHandleLokiSeries(b *testing.B) {
 		})
 	}
 }
+
+var benchStreamsWithFlags = `{
+	"status": "success",
+	"data": {
+		"resultType": "streams",
+		"result": [
+			{"stream": {"app":"nginx","env":"prod","region":"us-east-1"},
+				"values": [["1700000000000000000","GET /api/v1/users 200 12ms"],
+					["1700000001000000000","POST /api/v1/orders 201 45ms"]]},
+			{"stream": {"app":"api","env":"prod","region":"us-east-1"},
+				"values": [["1700000002000000000","INFO starting handler"],
+					["1700000003000000000","ERROR db timeout"]]}
+		],
+		"stats": {"summary": {"bytesProcessedPerSecond":102400}},
+		"encodingFlags": ["categorize-labels"]
+	}
+}`
+
+func BenchmarkHandleLokiQueries_SingleParse(b *testing.B) {
+	logger := log.NewNopLogger()
+	for _, tc := range []struct {
+		name string
+		n    int
+	}{
+		{"1backend", 1},
+		{"2backends", 2},
+		{"5backends", 5},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				b.StopTimer()
+				results := makeResults(tc.n, benchStreamsWithFlags)
+				w := httptest.NewRecorder()
+				b.StartTimer()
+
+				HandleLokiQueries(context.Background(), w, results, logger)
+			}
+		})
+	}
+}
