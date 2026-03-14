@@ -49,10 +49,20 @@ type VolumeRangeConfig struct {
 	Step string `yaml:"step"` // Step duration to force on backend queries (e.g., "1m", "60s")
 }
 
+// LogvolhistConfig holds configuration for logvolhist (Grafana Logs Volume histogram) query handling.
+// When enabled, logvolhist queries (identified by X-Query-Tags: Source=logvolhist) have their
+// LogQL range vector interval rewritten to match api.query_range.step, fixing the accuracy
+// problem where count_over_time({...}[5s]) with step=1m only counts 8.3% of each interval.
+type LogvolhistConfig struct {
+	Enabled bool   `yaml:"enabled"` // Enable logvolhist query detection and rewriting
+	Timeout string `yaml:"timeout"` // Per-query timeout for logvolhist queries (e.g., "30s", "1m")
+}
+
 // APIConfig holds configuration for API endpoint behavior
 type APIConfig struct {
 	QueryRange  QueryRangeConfig  `yaml:"query_range"`
 	VolumeRange VolumeRangeConfig `yaml:"volume_range"`
+	Logvolhist  LogvolhistConfig  `yaml:"logvolhist"`
 }
 
 // Config represents the overall proxy configuration
@@ -117,6 +127,17 @@ func (a *APIConfig) Validate() error {
 	if a.VolumeRange.Step != "" {
 		if err := validateStepDuration(a.VolumeRange.Step); err != nil {
 			return fmt.Errorf("api.volume_range.step: %w", err)
+		}
+	}
+
+	if a.Logvolhist.Enabled {
+		if a.QueryRange.Step == "" {
+			return fmt.Errorf("api.query_range.step is required when api.logvolhist.enabled is true")
+		}
+		if a.Logvolhist.Timeout != "" {
+			if err := validateStepDuration(a.Logvolhist.Timeout); err != nil {
+				return fmt.Errorf("api.logvolhist.timeout: %w", err)
+			}
 		}
 	}
 

@@ -146,10 +146,16 @@ func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-cha
 		finalResult = formattedResults
 
 	case loghttp.ResultTypeMatrix:
-		// Apply downsampling if step override is active and original step > configured step
+		// Apply post-processing if step override is active.
 		if stepInfo, ok := GetStepInfo(ctx); ok {
 			if stepInfo.OriginalStep > stepInfo.ConfiguredStep && stepInfo.OriginalStep > 0 {
-				mergedMatrix = downsampleMatrix(mergedMatrix, stepInfo.OriginalStep, logger)
+				if stepInfo.AggregateSum {
+					// Logvolhist: sum values per bucket (count_over_time produces counts)
+					mergedMatrix = aggregateMatrix(mergedMatrix, stepInfo.OriginalStep, logger)
+				} else {
+					// Generic: keep last value per bucket (gauge-like metrics)
+					mergedMatrix = downsampleMatrix(mergedMatrix, stepInfo.OriginalStep, logger)
+				}
 			}
 		}
 
@@ -267,6 +273,81 @@ func downsampleMatrix(matrix loghttp.Matrix, targetStep time.Duration, logger lo
 	level.Debug(logger).Log(
 		"msg", "Downsampled matrix data for Grafana alignment",
 		"original_series", len(matrix),
+		"target_step", targetStep.String(),
+	)
+
+	return result
+}
+
+// aggregateMatrix aggregates matrix data by summing values within each time bucket
+// aligned to targetStep boundaries. This is used for logvolhist queries where
+// count_over_time produces additive counts: querying Loki at 1m resolution and
+// summing into Grafana's requested step (e.g., 1h) yields accurate totals.
+//
+// Unlike downsampleMatrix (which keeps the last value per bucket for gauge-like
+// data), aggregateMatrix sums all values -- correct for counters produced by
+// count_over_time, bytes_over_time, etc.
+func aggregateMatrix(matrix loghttp.Matrix, targetStep time.Duration, logger log.Logger) loghttp.Matrix {
+	if targetStep <= 0 {
+		return matrix
+	}
+
+	targetStepMs := targetStep.Milliseconds()
+	result := make(loghttp.Matrix, 0, len(matrix))
+
+	for _, series := range matrix {
+		if len(series.Values) == 0 {
+			result = append(result, series)
+			continue
+		}
+
+		// Sort values by timestamp
+		sortedValues := make([]model.SamplePair, len(series.Values))
+		copy(sortedValues, series.Values)
+		sort.Slice(sortedValues, func(i, j int) bool {
+			return sortedValues[i].Timestamp < sortedValues[j].Timestamp
+		})
+
+		// Group values into step-aligned buckets and sum
+		type bucket struct {
+			sum model.SampleValue
+		}
+		buckets := make(map[int64]*bucket)
+		bucketOrder := make([]int64, 0) // preserve insertion order
+
+		for _, sample := range sortedValues {
+			sampleMs := int64(sample.Timestamp)
+			bucketTs := (sampleMs / targetStepMs) * targetStepMs
+			b, exists := buckets[bucketTs]
+			if !exists {
+				b = &bucket{}
+				buckets[bucketTs] = b
+				bucketOrder = append(bucketOrder, bucketTs)
+			}
+			b.sum += sample.Value
+		}
+
+		// Convert to sorted slice
+		aggregated := make([]model.SamplePair, 0, len(bucketOrder))
+		sort.Slice(bucketOrder, func(i, j int) bool {
+			return bucketOrder[i] < bucketOrder[j]
+		})
+		for _, ts := range bucketOrder {
+			aggregated = append(aggregated, model.SamplePair{
+				Timestamp: model.Time(ts),
+				Value:     buckets[ts].sum,
+			})
+		}
+
+		result = append(result, model.SampleStream{
+			Metric: series.Metric,
+			Values: aggregated,
+		})
+	}
+
+	level.Debug(logger).Log(
+		"msg", "Aggregated matrix data for logvolhist",
+		"series", len(matrix),
 		"target_step", targetStep.String(),
 	)
 

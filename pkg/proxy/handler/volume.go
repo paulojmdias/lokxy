@@ -38,11 +38,15 @@ type VolumeData struct {
 	Result     []Volume `json:"result"`
 }
 
-// Volume represents a single volume entry
+// Volume represents a single volume entry.
+// Value and Values are mutually exclusive: vector results use Value,
+// matrix results use Values. The omitempty tag prevents serializing
+// the unused field as null, which would break clients (e.g., Grafana)
+// that parse the response as a standard Prometheus/Loki matrix format.
 type Volume struct {
 	Metric map[string]string `json:"metric"`
-	Value  []any             `json:"value"`  // [timestamp, value] for vector
-	Values [][]any           `json:"values"` // [[timestamp, value], ...] for matrix
+	Value  []any             `json:"value,omitempty"`  // [timestamp, value] for vector
+	Values [][]any           `json:"values,omitempty"` // [[timestamp, value], ...] for matrix
 }
 
 // HandleLokiVolume aggregates volume data from multiple Loki instances

@@ -16,6 +16,7 @@ const (
 type StepInfo struct {
 	OriginalStep   time.Duration // Step requested by client (Grafana)
 	ConfiguredStep time.Duration // Step forced to backends
+	AggregateSum   bool          // Sum values per bucket (for count_over_time) instead of last-value
 }
 
 // WithStepInfo adds step information to the context
