@@ -38,11 +38,13 @@ type CustomRoundTripper struct {
 
 // RoundTrip method allows us to inspect and modify requests/responses
 func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	headersJSON, err := json.Marshal(req.Header)
-	if err != nil {
-		level.Error(c.logger).Log("msg", "Failed to marshal headers for logging", "err", err)
-	} else {
-		level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL.String(), "headers", string(headersJSON))
+	if ce := level.Debug(c.logger); ce != nil {
+		headersJSON, err := json.Marshal(req.Header)
+		if err != nil {
+			_ = level.Error(c.logger).Log("msg", "Failed to marshal headers for logging", "err", err)
+		} else {
+			_ = ce.Log("msg", "Custom RoundTrip", "url", req.URL.String(), "headers", string(headersJSON))
+		}
 	}
 
 	// Perform the actual request
