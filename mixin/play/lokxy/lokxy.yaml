@@ -11,5 +11,5 @@ server_groups:
       X-Scope-OrgID: "tenant2"
 
 logging:
-  level: "debug"
+  level: "info"
   format: "json"
