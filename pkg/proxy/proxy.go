@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -36,13 +37,43 @@ type CustomRoundTripper struct {
 	logger log.Logger
 }
 
+// redactHeaders returns a copy of the provided headers with sensitive values redacted.
+func redactHeaders(h http.Header) http.Header {
+	redacted := make(http.Header, len(h))
+
+	for name, values := range h {
+		nameLower := strings.ToLower(name)
+
+		// Explicitly sensitive headers and simple heuristics for secrets.
+		if nameLower == "authorization" ||
+			nameLower == "proxy-authorization" ||
+			nameLower == "cookie" ||
+			nameLower == "set-cookie" ||
+			strings.Contains(nameLower, "token") ||
+			strings.Contains(nameLower, "secret") ||
+			strings.Contains(nameLower, "password") {
+			redacted[name] = []string{"REDACTED"}
+			continue
+		}
+
+		// Non-sensitive header: copy as-is.
+		copied := make([]string, len(values))
+		copy(copied, values)
+		redacted[name] = copied
+	}
+
+	return redacted
+}
+
 // RoundTrip method allows us to inspect and modify requests/responses
 func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	headersJSON, err := json.Marshal(req.Header)
-	if err != nil {
-		level.Error(c.logger).Log("msg", "Failed to marshal headers for logging", "err", err)
-	} else {
-		level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL.String(), "headers", string(headersJSON))
+	if ce := level.Debug(c.logger); ce != nil {
+		headersJSON, err := json.Marshal(redactHeaders(req.Header))
+		if err != nil {
+			_ = level.Error(c.logger).Log("msg", "Failed to marshal headers for logging", "err", err)
+		} else {
+			_ = ce.Log("msg", "Custom RoundTrip", "url", req.URL.String(), "headers", string(headersJSON))
+		}
 	}
 
 	// Perform the actual request
@@ -339,9 +370,11 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 			traces.InjectTraceToHTTPRequest(upstreamCtx, req)
 
-			for name, headers := range req.Header {
-				for _, h := range headers {
-					level.Debug(p.logger).Log("msg", "Request Header", "Name", name, "Value", h)
+			if ce := level.Debug(p.logger); ce != nil {
+				for name, headers := range redactHeaders(req.Header) {
+					for _, h := range headers {
+						_ = ce.Log("msg", "Request Header", "Name", name, "Value", h)
+					}
 				}
 			}
 

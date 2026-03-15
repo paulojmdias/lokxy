@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/stretchr/testify/require"
 
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
@@ -652,4 +653,119 @@ func TestRoundTrip_GzipNewReaderError(t *testing.T) {
 	resp, err := rt.RoundTrip(req)
 	require.Error(t, err)
 	require.Nil(t, resp)
+}
+
+func TestRoundTrip_NoMarshalWhenDebugDisabled(t *testing.T) {
+	// Create a logger that only allows error level (debug is filtered out)
+	var buf bytes.Buffer
+	logger := log.NewLogfmtLogger(&buf)
+	logger = level.NewFilter(logger, level.AllowError())
+
+	body := []byte(`{"status":"ok"}`)
+	inner := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{},
+			Body:       io.NopCloser(bytes.NewReader(body)),
+		}, nil
+	})
+
+	rt := &CustomRoundTripper{rt: inner, logger: logger}
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	_ = resp.Body.Close()
+
+	// Debug output should NOT contain headers (marshal was skipped)
+	require.NotContains(t, buf.String(), "Custom RoundTrip")
+	require.NotContains(t, buf.String(), "Bearer secret")
+}
+
+func TestRoundTrip_MarshalWhenDebugEnabled(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.NewLogfmtLogger(&buf)
+	logger = level.NewFilter(logger, level.AllowDebug())
+
+	body := []byte(`{"status":"ok"}`)
+	inner := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{},
+			Body:       io.NopCloser(bytes.NewReader(body)),
+		}, nil
+	})
+
+	rt := &CustomRoundTripper{rt: inner, logger: logger}
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	_ = resp.Body.Close()
+
+	// Debug log line should appear
+	require.Contains(t, buf.String(), "Custom RoundTrip")
+	// But Authorization value should be redacted, not leaked
+	require.NotContains(t, buf.String(), "Bearer secret")
+	require.Contains(t, buf.String(), "REDACTED")
+}
+
+func TestFanout_NoHeaderLoggingWhenDebugOff(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.NewLogfmtLogger(&buf)
+	logger = level.NewFilter(logger, level.AllowInfo())
+
+	srv := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"status":"success","data":["app"]}`)
+		},
+	})
+	defer srv.Close()
+
+	config := mkConfig(srv.URL)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+	req.Header.Set("X-Custom", "should-not-appear")
+
+	NewServeMux(logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotContains(t, buf.String(), "Request Header")
+	require.NotContains(t, buf.String(), "should-not-appear")
+}
+
+func TestFanout_HeaderLoggingRedactsSensitiveValues(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.NewLogfmtLogger(&buf)
+	logger = level.NewFilter(logger, level.AllowDebug())
+
+	srv := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/labels": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"status":"success","data":["app"]}`)
+		},
+	})
+	defer srv.Close()
+
+	config := mkConfig(srv.URL)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+	req.Header.Set("Authorization", "Bearer top-secret-token")
+	req.Header.Set("X-Safe-Header", "visible-value")
+
+	NewServeMux(logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	// Debug header logging should appear
+	require.Contains(t, buf.String(), "Request Header")
+	// Non-sensitive header value should be visible
+	require.Contains(t, buf.String(), "visible-value")
+	// Sensitive Authorization value should be redacted
+	require.NotContains(t, buf.String(), "top-secret-token")
+	require.Contains(t, buf.String(), "REDACTED")
 }
