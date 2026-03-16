@@ -22,3 +22,8 @@ server_groups:
 logging:
   level: debug
   format: logfmt
+api:
+  query_range:
+    step: "1m"
+  volume_range:
+    step: "1m"

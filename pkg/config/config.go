@@ -3,9 +3,11 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 )
 
@@ -37,10 +39,37 @@ type LoggerConfig struct {
 	Format string `yaml:"format"`
 }
 
+// QueryRangeConfig holds configuration for the query_range endpoint
+type QueryRangeConfig struct {
+	Step string `yaml:"step"` // Step duration to force on backend queries (e.g., "1m", "60s")
+}
+
+// VolumeRangeConfig holds configuration for the volume_range endpoint
+type VolumeRangeConfig struct {
+	Step string `yaml:"step"` // Step duration to force on backend queries (e.g., "1m", "60s")
+}
+
+// LogvolhistConfig holds configuration for logvolhist (Grafana Logs Volume histogram) query handling.
+// When enabled, logvolhist queries (identified by X-Query-Tags: Source=logvolhist) have their
+// LogQL range vector interval rewritten to match api.query_range.step, fixing the accuracy
+// problem where count_over_time({...}[5s]) with step=1m only counts 8.3% of each interval.
+type LogvolhistConfig struct {
+	Enabled bool   `yaml:"enabled"` // Enable logvolhist query detection and rewriting
+	Timeout string `yaml:"timeout"` // Per-query timeout for logvolhist queries (e.g., "30s", "1m")
+}
+
+// APIConfig holds configuration for API endpoint behavior
+type APIConfig struct {
+	QueryRange  QueryRangeConfig  `yaml:"query_range"`
+	VolumeRange VolumeRangeConfig `yaml:"volume_range"`
+	Logvolhist  LogvolhistConfig  `yaml:"logvolhist"`
+}
+
 // Config represents the overall proxy configuration
 type Config struct {
 	ServerGroups []ServerGroup `yaml:"server_groups"`
 	Logging      LoggerConfig  `yaml:"logging"`
+	API          APIConfig     `yaml:"api"`
 }
 
 // LoadConfig loads and parses the YAML configuration file
@@ -79,6 +108,55 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate API configuration
+	if err := c.API.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Validate checks if the API configuration is valid
+func (a *APIConfig) Validate() error {
+	if a.QueryRange.Step != "" {
+		if err := validateStepDuration(a.QueryRange.Step); err != nil {
+			return fmt.Errorf("api.query_range.step: %w", err)
+		}
+	}
+
+	if a.VolumeRange.Step != "" {
+		if err := validateStepDuration(a.VolumeRange.Step); err != nil {
+			return fmt.Errorf("api.volume_range.step: %w", err)
+		}
+	}
+
+	if a.Logvolhist.Enabled {
+		if a.QueryRange.Step == "" {
+			return fmt.Errorf("api.query_range.step is required when api.logvolhist.enabled is true")
+		}
+		if a.Logvolhist.Timeout != "" {
+			if err := validateStepDuration(a.Logvolhist.Timeout); err != nil {
+				return fmt.Errorf("api.logvolhist.timeout: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateStepDuration validates a step duration string
+// Accepts Prometheus-style duration (e.g., "1m", "30s", "1h", "1d", "1w")
+// Note: Loki does not support milliseconds (ms) for step parameter
+func validateStepDuration(step string) error {
+	// Loki does not support milliseconds
+	if strings.Contains(step, "ms") {
+		return fmt.Errorf("invalid step duration %q: milliseconds (ms) not supported by Loki", step)
+	}
+
+	_, err := model.ParseDuration(step)
+	if err != nil {
+		return fmt.Errorf("invalid step duration %q: %w", step, err)
+	}
 	return nil
 }
 

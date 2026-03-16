@@ -134,6 +134,12 @@ server_groups:
 logging:
   level: "info"       # Available options: "debug", "info", "warn", "error"
   format: "json"      # Available options: "json", "logfmt"
+
+api:
+  query_range:
+    step: "1m"        # Force step parameter for query_range endpoint
+  volume_range:
+    step: "1m"        # Force step parameter for volume_range endpoint
 ```
 
 ### Configuration Options:
@@ -154,6 +160,12 @@ logging:
 * `logging`:
     * `level`: Defines the log level (`debug`, `info`, `warn`, `error`).
     * `format`: The log output format, either in `json` or `logfmt`.
+
+* `api`: API endpoint behavior configuration (optional).
+    * `query_range`: Configuration for `/loki/api/v1/query_range` endpoint.
+        * `step`: Force a specific step parameter for all query_range requests to backends. Accepts Prometheus duration format (e.g., `"1m"`, `"30s"`, `"1h"`, `"1d"`, `"1w"`). Note: milliseconds (`ms`) are not supported by Loki. When a smaller step is forced to backends than what the client requested, lokxy automatically downsamples the results to match the client's expected step alignment, ensuring compatibility with Grafana's `lokiQuerySplitting` feature.
+    * `volume_range`: Configuration for `/loki/api/v1/index/volume_range` endpoint.
+        * `step`: Force a specific step parameter for all volume_range requests to backends. Same format as `query_range.step`.
 
 ### Tracing Configuration
 
