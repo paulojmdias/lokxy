@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -148,6 +149,230 @@ func TestHandleLokiQueries_VectorResult(t *testing.T) {
 	require.Len(t, result, 2)
 }
 
+func TestHandleLokiQueries_ScalarResult(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1609459200, "1"],
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "scalar", data["resultType"])
+
+	// scalar should be forwarded as a JSON array [ts,value]
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 2)
+	require.Equal(t, "1", result[1])
+}
+
+func TestHandleLokiQueries_MultipleScalarResponses_DoesNotOverrideFirst(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse, 2)
+
+	rec1 := httptest.NewRecorder()
+	rec1.WriteString(`{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1609459200, "1"],
+			"stats": {}
+		}
+	}`)
+	results <- wrapResponse(rec1.Result())
+
+	rec2 := httptest.NewRecorder()
+	rec2.WriteString(`{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1609459200, "2"],
+			"stats": {}
+		}
+	}`)
+	results <- wrapResponse(rec2.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "scalar", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 2)
+	require.Equal(t, "1", result[1])
+}
+
+func TestHandleLokiQueries_NullResultBecomesEmptyArray(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": null,
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "streams", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Empty(t, result)
+}
+
+func TestHandleLokiQueries_NullMatrixResultBecomesEmptyArray(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "matrix",
+			"result": null,
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "matrix", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Empty(t, result)
+}
+
+func TestHandleLokiQueries_NullVectorResultBecomesEmptyArray(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "vector",
+			"result": null,
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "vector", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Empty(t, result)
+}
+
+func TestHandleLokiQueries_NullScalarResult_IsSkipped(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": null,
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+	require.Equal(t, http.StatusBadGateway, w.Code)
+}
+
+func TestHandleLokiQueries_NullUnknownResultType_IsSkipped(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "unknown",
+			"result": null,
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+	require.Equal(t, http.StatusBadGateway, w.Code)
+}
+
 func TestHandleLokiQueries_MultipleStreamResponses(t *testing.T) {
 	logger := log.NewNopLogger()
 
@@ -203,6 +428,78 @@ func TestHandleLokiQueries_MultipleStreamResponses(t *testing.T) {
 	require.Len(t, result, 2)
 }
 
+func TestHandleLokiQueries_MismatchedResultTypes_SkipsMismatchingBackend(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	streams := `{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [{"stream": {"app": "nginx"}, "values": [["1609459200000000000", "log 1"]]}],
+			"stats": {}
+		}
+	}`
+	matrix := `{
+		"status": "success",
+		"data": {
+			"resultType": "matrix",
+			"result": [{"metric": {"__name__": "x"}, "values": [[1609459200, "1"]]}],
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 2)
+	{
+		rec := httptest.NewRecorder()
+		rec.WriteString(streams)
+		results <- wrapResponse(rec.Result())
+	}
+	{
+		rec := httptest.NewRecorder()
+		rec.WriteString(matrix)
+		results <- wrapResponse(rec.Result())
+	}
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "streams", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+}
+
+func TestHandleLokiQueries_UnknownResultType_ReturnsBadGateway(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "unknown",
+			"result": [],
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	require.Equal(t, http.StatusBadGateway, w.Code)
+}
+
 func TestHandleLokiQueries_WithEncodingFlags(t *testing.T) {
 	logger := log.NewNopLogger()
 
@@ -247,7 +544,7 @@ func TestHandleLokiQueries_WithStructuredMetadata(t *testing.T) {
 				{
 					"stream": {"app": "nginx"},
 					"values": [
-						["1609459200000000000", "log line", {"structuredMetadata": [{"key": "value"}]}]
+						["1609459200000000000", "log line", {"structuredMetadata": {"key": "value"}}]
 					]
 				}
 			],
@@ -271,6 +568,67 @@ func TestHandleLokiQueries_WithStructuredMetadata(t *testing.T) {
 	data, ok := response["data"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "streams", data["resultType"])
+}
+
+func TestHandleLokiQueries_WithCategorizedMetadataArrays(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [
+				{
+					"stream": {"app": "nginx"},
+					"values": [
+						["1609459200000000000", "{\"message\":\"Update event got: PlacesData 3415\"}", {"structuredMetadata": [["trace_id", "0242ac120002"]], "parsed": [["level", "info"]]}],
+						["1609459201000000000", "{\"message\":\"next log line\"}"]
+					]
+				}
+			],
+			"stats": {},
+			"encodingFlags": ["categorize-labels"]
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	require.Equal(t, "success", response["status"])
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "streams", data["resultType"])
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+
+	stream, ok := result[0].(map[string]any)
+	require.True(t, ok)
+
+	values, ok := stream["values"].([]any)
+	require.True(t, ok)
+	require.Len(t, values, 2)
+
+	firstValue, ok := values[0].([]any)
+	require.True(t, ok)
+	require.Len(t, firstValue, 3)
+
+	metadata, ok := firstValue[2].(map[string]any)
+	require.True(t, ok)
+	_, hasStructuredMetadata := metadata["structuredMetadata"].([]any)
+	_, hasParsed := metadata["parsed"].([]any)
+	require.True(t, hasStructuredMetadata)
+	require.True(t, hasParsed)
 }
 
 func TestHandleLokiQueries_EmptyResult(t *testing.T) {
@@ -319,17 +677,13 @@ func TestHandleLokiQueries_InvalidJSON(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiQueries(t.Context(), w, results, logger)
 
+	require.Equal(t, http.StatusBadGateway, w.Code)
+
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 
-	// Should return success with empty result on error
-	require.Equal(t, "success", response["status"])
-	data, ok := response["data"].(map[string]any)
-	require.True(t, ok)
-
-	result, ok := data["result"].([]any)
-	require.True(t, ok)
-	require.Empty(t, result)
+	require.Equal(t, "error", response["status"])
+	require.Equal(t, "backend_error", response["errorType"])
 }
 
 func TestHandleLokiQueries_ResponseReaderError(t *testing.T) {
@@ -345,17 +699,83 @@ func TestHandleLokiQueries_ResponseReaderError(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiQueries(t.Context(), w, results, logger)
 
+	require.Equal(t, http.StatusBadGateway, w.Code)
+
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 
-	// Should return success with empty result on read error
-	require.Equal(t, "success", response["status"])
+	require.Equal(t, "error", response["status"])
+	require.Equal(t, "backend_error", response["errorType"])
+}
+
+func TestHandleLokiQueries_ResponseReaderCanceled_IsIgnoredWhenOthersSucceed(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse, 2)
+	results <- wrapResponse(&http.Response{
+		StatusCode: 200,
+		Body:       &canceledQueryReader{},
+	})
+
+	rec := httptest.NewRecorder()
+	rec.WriteString(`{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [{"stream": {"app": "api"}, "values": []}],
+			"stats": {}
+		}
+	}`)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
 	data, ok := response["data"].(map[string]any)
 	require.True(t, ok)
 
 	result, ok := data["result"].([]any)
 	require.True(t, ok)
-	require.Empty(t, result)
+	require.Len(t, result, 1)
+}
+
+func TestHandleLokiQueries_ResponseReaderDeadlineExceeded_IsIgnoredWhenOthersSucceed(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	results := make(chan *proxyresponse.BackendResponse, 2)
+	results <- wrapResponse(&http.Response{
+		StatusCode: 200,
+		Body:       &deadlineQueryReader{},
+	})
+
+	rec := httptest.NewRecorder()
+	rec.WriteString(`{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [{"stream": {"app": "api"}, "values": []}],
+			"stats": {}
+		}
+	}`)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 1)
 }
 
 func TestHandleLokiQueries_PartialFailure(t *testing.T) {
@@ -418,16 +838,13 @@ func TestHandleLokiQueries_NoResponses(t *testing.T) {
 	w := httptest.NewRecorder()
 	HandleLokiQueries(t.Context(), w, results, logger)
 
+	require.Equal(t, http.StatusBadGateway, w.Code)
+
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 
-	require.Equal(t, "success", response["status"])
-	data, ok := response["data"].(map[string]any)
-	require.True(t, ok)
-
-	result, ok := data["result"].([]any)
-	require.True(t, ok)
-	require.Empty(t, result)
+	require.Equal(t, "error", response["status"])
+	require.Equal(t, "backend_error", response["errorType"])
 }
 
 func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
@@ -477,23 +894,6 @@ func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
 	require.Len(t, encodingFlags, 3)
 }
 
-func TestHandleLokiQueries_EmptyBody(t *testing.T) {
-	logger := log.NewNopLogger()
-
-	// Send a response with an empty JSON object — no recognised result type.
-	results := make(chan *proxyresponse.BackendResponse, 1)
-	rec := httptest.NewRecorder()
-	rec.WriteString(`{}`)
-	results <- wrapResponse(rec.Result())
-	close(results)
-
-	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
-
-	// Should still produce a valid (empty) encoded response
-	require.NotEmpty(t, w.Body.Bytes())
-}
-
 // failingQueryReader always fails on Read (simulates network/IO failure)
 type failingQueryReader struct{}
 
@@ -502,5 +902,27 @@ func (f *failingQueryReader) Read([]byte) (int, error) {
 }
 
 func (f *failingQueryReader) Close() error {
+	return nil
+}
+
+// canceledQueryReader always fails with context cancellation.
+type canceledQueryReader struct{}
+
+func (c *canceledQueryReader) Read([]byte) (int, error) {
+	return 0, context.Canceled
+}
+
+func (c *canceledQueryReader) Close() error {
+	return nil
+}
+
+// deadlineQueryReader always fails with context deadline exceeded.
+type deadlineQueryReader struct{}
+
+func (d *deadlineQueryReader) Read([]byte) (int, error) {
+	return 0, context.DeadlineExceeded
+}
+
+func (d *deadlineQueryReader) Close() error {
 	return nil
 }
