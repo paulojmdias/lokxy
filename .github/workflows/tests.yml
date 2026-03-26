@@ -26,7 +26,7 @@ jobs:
       - name: Test
         run: make test
       - name: upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.out
           token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
