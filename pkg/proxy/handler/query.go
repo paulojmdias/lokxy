@@ -1,16 +1,20 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats" // For statistics
+	"github.com/prometheus/common/model"
 
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
@@ -31,6 +35,12 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 	var resultType loghttp.ResultType
 	var mergedStats stats.Result
 	encodingFlagsMap := make(map[string]struct{})
+	vectorMap := make(map[model.Fingerprint]*model.Sample)
+	matrixMap := make(map[model.Fingerprint]*model.SampleStream)
+
+	// encodingFlagsMarker is used for a fast pre-check before the second
+	// (targeted) unmarshal that extracts encoding flags.
+	encodingFlagsMarker := []byte(`"encodingFlags"`)
 
 	for backendResp := range results {
 		resp := backendResp.Response
@@ -54,11 +64,14 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 			continue
 		}
 
-		// Extract encodingFlags with a lightweight targeted unmarshal
-		var envelope encodingFlagsEnvelope
-		if err := json.Unmarshal(bodyBytes, &envelope); err == nil {
-			for _, flag := range envelope.Data.EncodingFlags {
-				encodingFlagsMap[flag] = struct{}{}
+		// Extract encodingFlags only when the field is present in the raw
+		// payload, avoiding a full second JSON parse in the common case.
+		if bytes.Contains(bodyBytes, encodingFlagsMarker) {
+			var envelope encodingFlagsEnvelope
+			if err := json.Unmarshal(bodyBytes, &envelope); err == nil {
+				for _, flag := range envelope.Data.EncodingFlags {
+					encodingFlagsMap[flag] = struct{}{}
+				}
 			}
 		}
 
@@ -80,7 +93,15 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Matrix")
 				continue
 			}
-			mergedMatrix = append(mergedMatrix, matrix...)
+			for _, entry := range matrix {
+				fp := entry.Metric.Fingerprint()
+				if existing, exists := matrixMap[fp]; exists {
+					existing.Values = sumMergeSamplePairs(existing.Values, entry.Values)
+				} else {
+					entryCopy := entry
+					matrixMap[fp] = &entryCopy
+				}
+			}
 
 		case loghttp.ResultTypeVector:
 			vector, ok := queryResult.Data.Result.(loghttp.Vector)
@@ -88,11 +109,55 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Vector")
 				continue
 			}
-			mergedVector = append(mergedVector, vector...)
+			for _, sample := range vector {
+				fp := sample.Metric.Fingerprint()
+				if _, exists := vectorMap[fp]; !exists {
+					sampleCopy := sample
+					vectorMap[fp] = &sampleCopy
+				}
+			}
 		}
 
 		// Merge statistics
 		mergedStats.Merge(queryResult.Data.Statistics)
+	}
+
+	// Convert maps to sorted slices for consistent output.  Pre-compute the
+	// string sort key once per entry to avoid repeated allocations during sort.
+	type vectorWithKey struct {
+		sample model.Sample
+		key    string
+	}
+	vectorKeyed := make([]vectorWithKey, 0, len(vectorMap))
+	for _, sample := range vectorMap {
+		vectorKeyed = append(vectorKeyed, vectorWithKey{
+			sample: *sample,
+			key:    modelMetricKey(sample.Metric),
+		})
+	}
+	sort.Slice(vectorKeyed, func(i, j int) bool {
+		return vectorKeyed[i].key < vectorKeyed[j].key
+	})
+	for _, vk := range vectorKeyed {
+		mergedVector = append(mergedVector, vk.sample)
+	}
+
+	type matrixWithKey struct {
+		stream model.SampleStream
+		key    string
+	}
+	matrixKeyed := make([]matrixWithKey, 0, len(matrixMap))
+	for _, entry := range matrixMap {
+		matrixKeyed = append(matrixKeyed, matrixWithKey{
+			stream: *entry,
+			key:    modelMetricKey(entry.Metric),
+		})
+	}
+	sort.Slice(matrixKeyed, func(i, j int) bool {
+		return matrixKeyed[i].key < matrixKeyed[j].key
+	})
+	for _, mk := range matrixKeyed {
+		mergedMatrix = append(mergedMatrix, mk.stream)
 	}
 
 	// Prepare final response
@@ -190,4 +255,69 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
 		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
 	}
+}
+
+// modelMetricKey creates a consistent string key from a model.Metric for
+// aggregation purposes. Labels are sorted by name so that two metrics with
+// the same label pairs always produce the same key.
+func modelMetricKey(m model.Metric) string {
+	if len(m) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, string(k))
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(string(m[model.LabelName(k)]))
+	}
+	return b.String()
+}
+
+// sumMergeSamplePairs merges two SamplePair slices that are already sorted by
+// timestamp, summing values at the same timestamp and preserving chronological
+// order.  Uses a two-pointer merge to avoid map overhead and re-sorting.
+func sumMergeSamplePairs(existing, incoming []model.SamplePair) []model.SamplePair {
+	if len(existing) == 0 {
+		return incoming
+	}
+	if len(incoming) == 0 {
+		return existing
+	}
+
+	merged := make([]model.SamplePair, 0, len(existing)+len(incoming))
+	i, j := 0, 0
+
+	for i < len(existing) && j < len(incoming) {
+		switch {
+		case existing[i].Timestamp < incoming[j].Timestamp:
+			merged = append(merged, existing[i])
+			i++
+		case existing[i].Timestamp > incoming[j].Timestamp:
+			merged = append(merged, incoming[j])
+			j++
+		default: // same timestamp: sum values
+			merged = append(merged, model.SamplePair{
+				Timestamp: existing[i].Timestamp,
+				Value:     existing[i].Value + incoming[j].Value,
+			})
+			i++
+			j++
+		}
+	}
+
+	// Append remaining from whichever slice has leftovers.
+	merged = append(merged, existing[i:]...)
+	merged = append(merged, incoming[j:]...)
+
+	return merged
 }
