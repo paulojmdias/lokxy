@@ -477,6 +477,51 @@ func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
 	require.Len(t, encodingFlags, 3)
 }
 
+func TestHandleLokiQueries_NoEncodingFlags(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [
+				{"stream": {"app":"test"}, "values": [["1700000000000000000","line1"]]}
+			],
+			"stats": {}
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, logger)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	data, ok := got["data"].(map[string]any)
+	require.True(t, ok)
+	_, hasFlags := data["encodingFlags"]
+	require.False(t, hasFlags, "encodingFlags should not appear when absent from upstream")
+}
+
+func TestEncodingFlagsEnvelope_Unmarshal(t *testing.T) {
+	body := []byte(`{"data":{"encodingFlags":["categorize-labels","flag2"],"resultType":"streams"}}`)
+	var envelope encodingFlagsEnvelope
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	require.Equal(t, []string{"categorize-labels", "flag2"}, envelope.Data.EncodingFlags)
+}
+
+func TestEncodingFlagsEnvelope_NoFlags(t *testing.T) {
+	body := []byte(`{"data":{"resultType":"streams"}}`)
+	var envelope encodingFlagsEnvelope
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	require.Empty(t, envelope.Data.EncodingFlags)
+}
+
 func TestHandleLokiQueries_EmptyBody(t *testing.T) {
 	logger := log.NewNopLogger()
 
