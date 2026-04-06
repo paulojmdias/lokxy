@@ -103,15 +103,40 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 		Timeout: dialTimeout,
 	}
 
+	// Apply transport settings from config, falling back to defaults.
+	tc := instance.HTTPClientConfig.Transport
+
+	maxIdleConns := tc.MaxIdleConns
+	if maxIdleConns == 0 {
+		maxIdleConns = 100
+	}
+	maxIdleConnsPerHost := tc.MaxIdleConnsPerHost
+	if maxIdleConnsPerHost == 0 {
+		maxIdleConnsPerHost = 20
+	}
+	idleConnTimeout := tc.IdleConnTimeout
+	if idleConnTimeout == 0 {
+		idleConnTimeout = 90 * time.Second
+	}
+	expectContinueTimeout := tc.ExpectContinueTimeout
+	if expectContinueTimeout == 0 {
+		expectContinueTimeout = 1 * time.Second
+	}
+
+	forceHTTP2 := true
+	if tc.ForceAttemptHTTP2 != nil {
+		forceHTTP2 = *tc.ForceAttemptHTTP2
+	}
+
 	transport := &http.Transport{
 		TLSClientConfig:       tlsConfig,
 		DialContext:           dialer.DialContext,
-		DisableKeepAlives:     false,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   20,
-		IdleConnTimeout:       90 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		ForceAttemptHTTP2:     true,
+		DisableKeepAlives:     tc.DisableKeepAlives,
+		MaxIdleConns:          maxIdleConns,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+		IdleConnTimeout:       idleConnTimeout,
+		ExpectContinueTimeout: expectContinueTimeout,
+		ForceAttemptHTTP2:     forceHTTP2,
 	}
 
 	client := &http.Client{

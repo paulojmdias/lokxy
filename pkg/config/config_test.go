@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -67,6 +68,25 @@ func TestLoadConfig(t *testing.T) {
 				require.Equal(t, "/etc/ssl/certs/ca.crt", cfg.ServerGroups[0].HTTPClientConfig.TLSConfig.CAFile)
 				require.Equal(t, "/etc/ssl/certs/client.crt", cfg.ServerGroups[0].HTTPClientConfig.TLSConfig.CertFile)
 				require.Equal(t, "/etc/ssl/private/client.key", cfg.ServerGroups[0].HTTPClientConfig.TLSConfig.KeyFile)
+
+				// Verify transport config (explicit values)
+				tc := cfg.ServerGroups[0].HTTPClientConfig.Transport
+				require.False(t, tc.DisableKeepAlives)
+				require.Equal(t, 200, tc.MaxIdleConns)
+				require.Equal(t, 50, tc.MaxIdleConnsPerHost)
+				require.Equal(t, 120*time.Second, tc.IdleConnTimeout)
+				require.Equal(t, 2*time.Second, tc.ExpectContinueTimeout)
+				require.NotNil(t, tc.ForceAttemptHTTP2)
+				require.True(t, *tc.ForceAttemptHTTP2)
+
+				// Verify staging has zero-value transport (no transport block)
+				tc2 := cfg.ServerGroups[1].HTTPClientConfig.Transport
+				require.False(t, tc2.DisableKeepAlives)
+				require.Equal(t, 0, tc2.MaxIdleConns)
+				require.Equal(t, 0, tc2.MaxIdleConnsPerHost)
+				require.Equal(t, time.Duration(0), tc2.IdleConnTimeout)
+				require.Equal(t, time.Duration(0), tc2.ExpectContinueTimeout)
+				require.Nil(t, tc2.ForceAttemptHTTP2)
 
 				// Verify logging config
 				require.Equal(t, "debug", cfg.Logging.Level)
