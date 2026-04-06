@@ -100,7 +100,7 @@ func TestWriteGrafanaHealthCheckResponse(t *testing.T) {
 		require.True(t, ok)
 		require.Len(t, value, 2)
 
-		require.Equal(t, float64(4), value[0])
+		require.InDelta(t, float64(4), value[0], 0.001)
 		require.Equal(t, "2", value[1])
 	})
 
@@ -149,7 +149,7 @@ func TestWriteGrafanaHealthCheckResponse(t *testing.T) {
 		value := entry["value"].([]any)
 
 		// 1700000000000000000 ns = 1700000000 seconds
-		require.Equal(t, float64(1700000000), value[0])
+		require.InDelta(t, float64(1700000000), value[0], 0.001)
 		require.Equal(t, "2", value[1])
 	})
 }
