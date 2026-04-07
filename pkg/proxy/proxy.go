@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -36,13 +37,43 @@ type CustomRoundTripper struct {
 	logger log.Logger
 }
 
+// redactHeaders returns a copy of the provided headers with sensitive values redacted.
+func redactHeaders(h http.Header) http.Header {
+	redacted := make(http.Header, len(h))
+
+	for name, values := range h {
+		nameLower := strings.ToLower(name)
+
+		// Explicitly sensitive headers and simple heuristics for secrets.
+		if nameLower == "authorization" ||
+			nameLower == "proxy-authorization" ||
+			nameLower == "cookie" ||
+			nameLower == "set-cookie" ||
+			strings.Contains(nameLower, "token") ||
+			strings.Contains(nameLower, "secret") ||
+			strings.Contains(nameLower, "password") {
+			redacted[name] = []string{"REDACTED"}
+			continue
+		}
+
+		// Non-sensitive header: copy as-is.
+		copied := make([]string, len(values))
+		copy(copied, values)
+		redacted[name] = copied
+	}
+
+	return redacted
+}
+
 // RoundTrip method allows us to inspect and modify requests/responses
 func (c *CustomRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	headersJSON, err := json.Marshal(req.Header)
-	if err != nil {
-		level.Error(c.logger).Log("msg", "Failed to marshal headers for logging", "err", err)
-	} else {
-		level.Debug(c.logger).Log("msg", "Custom RoundTrip", "url", req.URL.String(), "headers", string(headersJSON))
+	if ce := level.Debug(c.logger); ce != nil {
+		headersJSON, err := json.Marshal(redactHeaders(req.Header))
+		if err != nil {
+			_ = level.Error(c.logger).Log("msg", "Failed to marshal headers for logging", "err", err)
+		} else {
+			_ = ce.Log("msg", "Custom RoundTrip", "url", req.URL.String(), "headers", string(headersJSON))
+		}
 	}
 
 	// Perform the actual request
@@ -103,10 +134,40 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 		Timeout: dialTimeout,
 	}
 
+	// Apply transport settings from config, falling back to defaults.
+	tc := instance.HTTPClientConfig.Transport
+
+	maxIdleConns := tc.MaxIdleConns
+	if maxIdleConns == 0 {
+		maxIdleConns = 100
+	}
+	maxIdleConnsPerHost := tc.MaxIdleConnsPerHost
+	if maxIdleConnsPerHost == 0 {
+		maxIdleConnsPerHost = 20
+	}
+	idleConnTimeout := tc.IdleConnTimeout
+	if idleConnTimeout == 0 {
+		idleConnTimeout = 90 * time.Second
+	}
+	expectContinueTimeout := tc.ExpectContinueTimeout
+	if expectContinueTimeout == 0 {
+		expectContinueTimeout = 1 * time.Second
+	}
+
+	forceHTTP2 := true
+	if tc.ForceAttemptHTTP2 != nil {
+		forceHTTP2 = *tc.ForceAttemptHTTP2
+	}
+
 	transport := &http.Transport{
-		TLSClientConfig:   tlsConfig,
-		DialContext:       dialer.DialContext,
-		DisableKeepAlives: false,
+		TLSClientConfig:       tlsConfig,
+		DialContext:           dialer.DialContext,
+		DisableKeepAlives:     tc.DisableKeepAlives,
+		MaxIdleConns:          maxIdleConns,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+		IdleConnTimeout:       idleConnTimeout,
+		ExpectContinueTimeout: expectContinueTimeout,
+		ForceAttemptHTTP2:     forceHTTP2,
 	}
 
 	client := &http.Client{
@@ -165,9 +226,27 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		})
 	})
 
+	// Intercept Grafana datasource health check on /loki/api/v1/query.
+	// Grafana sends query=vector(1)+vector(1) and expects exactly one vector
+	// result with value "2".  Because lokxy fans out to multiple backends the
+	// merge would produce duplicates, so we short-circuit with a static
+	// response when the proxy itself is healthy.
+	mux.HandleFunc("/loki/api/v1/query", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
+
+		if handler.IsGrafanaHealthCheck(r) {
+			span.SetAttributes(attribute.Bool("proxy.health_check_intercept", true))
+			level.Info(logger).Log("msg", "Intercepted Grafana health check, returning static response")
+			handler.WriteGrafanaHealthCheckResponse(w, r, logger)
+			return
+		}
+
+		p.fanoutRequest(w, r, handler.HandleLokiQueries)
+	})
+
 	// Variable to hold the API routes and their corresponding handlers
 	apiRoutes := map[string]transformFn{
-		"/loki/api/v1/query":              handler.HandleLokiQueries,
 		"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 		"/loki/api/v1/series":             handler.HandleLokiSeries,
 		"/loki/api/v1/index/stats":        handler.HandleLokiStats,
@@ -339,9 +418,11 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 			traces.InjectTraceToHTTPRequest(upstreamCtx, req)
 
-			for name, headers := range req.Header {
-				for _, h := range headers {
-					level.Debug(p.logger).Log("msg", "Request Header", "Name", name, "Value", h)
+			if ce := level.Debug(p.logger); ce != nil {
+				for name, headers := range redactHeaders(req.Header) {
+					for _, h := range headers {
+						_ = ce.Log("msg", "Request Header", "Name", name, "Value", h)
+					}
 				}
 			}
 
