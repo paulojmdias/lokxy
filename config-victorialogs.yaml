@@ -1,0 +1,26 @@
+# Lokxy test config for VictoriaLogs backend integration.
+#
+# Usage:
+#   go run ./cmd -bind-addr :3200 -config config-victorialogs.yaml
+#
+# Expects:
+#   - VictoriaLogs on localhost:9428 (docker-compose)
+#   - Loki on localhost:3100 (docker-compose, optional -- comment out if not needed)
+#   - Grafana on localhost:3000 with a Loki datasource pointing at host.docker.internal:3200
+
+server_groups:
+  - name: "victorialogs-local"
+    type: "victorialogs"
+    url: "http://localhost:9428"
+    timeout: 60
+    # stream_labels omitted -> dynamic mode: parses _stream field automatically
+    # tenant omitted -> no multi-tenant prefix
+
+  # - name: "loki-local"
+  #   type: "loki"
+  #   url: "http://localhost:3100"
+  #   timeout: 60
+
+logging:
+  level: "debug"
+  format: "logfmt"
