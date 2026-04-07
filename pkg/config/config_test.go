@@ -76,6 +76,7 @@ func TestLoadConfig(t *testing.T) {
 				require.Equal(t, 50, tc.MaxIdleConnsPerHost)
 				require.Equal(t, 120*time.Second, tc.IdleConnTimeout)
 				require.Equal(t, 2*time.Second, tc.ExpectContinueTimeout)
+				require.Equal(t, 25*time.Second, tc.ResponseHeaderTimeout)
 				require.NotNil(t, tc.ForceAttemptHTTP2)
 				require.True(t, *tc.ForceAttemptHTTP2)
 
@@ -86,6 +87,7 @@ func TestLoadConfig(t *testing.T) {
 				require.Equal(t, 0, tc2.MaxIdleConnsPerHost)
 				require.Equal(t, time.Duration(0), tc2.IdleConnTimeout)
 				require.Equal(t, time.Duration(0), tc2.ExpectContinueTimeout)
+				require.Equal(t, time.Duration(0), tc2.ResponseHeaderTimeout)
 				require.Nil(t, tc2.ForceAttemptHTTP2)
 
 				// Verify logging config

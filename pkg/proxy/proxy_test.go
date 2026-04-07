@@ -677,7 +677,28 @@ func TestCreateHTTPClient_ConnectionPoolSettings(t *testing.T) {
 	require.Equal(t, 20, transport.MaxIdleConnsPerHost)
 	require.Equal(t, 90*time.Second, transport.IdleConnTimeout)
 	require.Equal(t, 1*time.Second, transport.ExpectContinueTimeout)
+	require.Equal(t, 5*time.Second, transport.ResponseHeaderTimeout)
 	require.True(t, transport.ForceAttemptHTTP2)
+}
+
+func TestCreateHTTPClient_ExplicitResponseHeaderTimeout(t *testing.T) {
+	sg := cfg.ServerGroup{
+		Name:    "rht-test",
+		URL:     "http://localhost:3100",
+		Timeout: 30,
+	}
+	sg.HTTPClientConfig.Transport.ResponseHeaderTimeout = 10 * time.Second
+
+	client, err := createHTTPClient(sg, log.NewNopLogger())
+	require.NoError(t, err)
+
+	crt, ok := client.Transport.(*CustomRoundTripper)
+	require.True(t, ok)
+	transport, ok := crt.rt.(*http.Transport)
+	require.True(t, ok)
+
+	// Explicit value (10s) should override the default (30s from Timeout)
+	require.Equal(t, 10*time.Second, transport.ResponseHeaderTimeout)
 }
 
 func TestRoundTrip_NoMarshalWhenDebugDisabled(t *testing.T) {
