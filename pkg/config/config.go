@@ -11,9 +11,22 @@ import (
 
 var isReady atomic.Bool
 
+// TransportConfig holds HTTP transport tuning parameters.
+// All fields are optional; zero values are replaced with sensible defaults
+// in the proxy layer.
+type TransportConfig struct {
+	DisableKeepAlives     bool          `yaml:"disable_keep_alives"`
+	MaxIdleConns          int           `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost   int           `yaml:"max_idle_conns_per_host"`
+	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
+	ExpectContinueTimeout time.Duration `yaml:"expect_continue_timeout"`
+	ForceAttemptHTTP2     *bool         `yaml:"force_attempt_http2"`
+}
+
 // HTTPClientConfig holds the HTTP client settings such as timeouts and TLS configurations
 type HTTPClientConfig struct {
-	DialTimeout time.Duration `yaml:"dial_timeout"`
+	DialTimeout time.Duration   `yaml:"dial_timeout"`
+	Transport   TransportConfig `yaml:"transport"`
 	TLSConfig   struct {
 		InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
 		CAFile             string `yaml:"ca_file"`

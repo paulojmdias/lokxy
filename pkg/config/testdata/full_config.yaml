@@ -7,6 +7,13 @@ server_groups:
       X-Scope-OrgID: tenant-1
     http_client_config:
       dial_timeout: 5s
+      transport:
+        disable_keep_alives: false
+        max_idle_conns: 200
+        max_idle_conns_per_host: 50
+        idle_conn_timeout: 120s
+        expect_continue_timeout: 2s
+        force_attempt_http2: true
       tls_config:
         insecure_skip_verify: false
         ca_file: /etc/ssl/certs/ca.crt

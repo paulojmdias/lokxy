@@ -130,6 +130,13 @@ server_groups:
     http_client_config:
       tls_config:
         insecure_skip_verify: true
+      transport:
+        disable_keep_alives: false
+        max_idle_conns: 200
+        max_idle_conns_per_host: 50
+        idle_conn_timeout: 120s
+        expect_continue_timeout: 2s
+        force_attempt_http2: true
 
 logging:
   level: "info"       # Available options: "debug", "info", "warn", "error"
@@ -146,10 +153,17 @@ logging:
     * `http_client_config`: HTTP Client custom configurations
         * `dial_timeout`: Timeout duration for establishing a connection. Defaults to 200ms.
         * `tls_config`:
-            * `insecure_skip_verify`: If set to true, the client will not verify the server’s certificate chain or host name.
+            * `insecure_skip_verify`: If set to true, the client will not verify the server's certificate chain or host name.
             * `ca_file`: Path to a custom Certificate Authority (CA) certificate file to verify the server.
             * `cert_file`: Path to the client certificate file for mutual TLS.
             * `key_file`: Path to the client key file for mutual TLS.
+        * `transport`: HTTP transport tuning parameters. All fields are optional; sensible defaults are applied when omitted.
+            * `disable_keep_alives`: Disables HTTP keep-alive connections when set to true. Default: `false`.
+            * `max_idle_conns`: Maximum number of idle connections across all hosts. Default: `100`.
+            * `max_idle_conns_per_host`: Maximum number of idle connections per host. Default: `20`.
+            * `idle_conn_timeout`: Duration an idle connection remains open before being closed. Default: `90s`.
+            * `expect_continue_timeout`: Timeout for waiting for a server's "100 Continue" response. Default: `1s`.
+            * `force_attempt_http2`: Forces HTTP/2 negotiation even when using custom TLS or dial functions. Default: `true`.
 
 * `logging`:
     * `level`: Defines the log level (`debug`, `info`, `warn`, `error`).
