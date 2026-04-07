@@ -111,7 +111,18 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 			}
 			for _, sample := range vector {
 				fp := sample.Metric.Fingerprint()
-				if _, exists := vectorMap[fp]; !exists {
+				if existing, exists := vectorMap[fp]; exists {
+					if ce := level.Debug(logger); ce != nil {
+						if existing.Value != sample.Value {
+							_ = ce.Log(
+								"msg", "vector dedup: different values for same series",
+								"metric", modelMetricKey(sample.Metric),
+								"existing_value", existing.Value,
+								"incoming_value", sample.Value,
+							)
+						}
+					}
+				} else {
 					sampleCopy := sample
 					vectorMap[fp] = &sampleCopy
 				}
