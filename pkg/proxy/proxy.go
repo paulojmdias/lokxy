@@ -226,9 +226,27 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		})
 	})
 
+	// Intercept Grafana datasource health check on /loki/api/v1/query.
+	// Grafana sends query=vector(1)+vector(1) and expects exactly one vector
+	// result with value "2".  Because lokxy fans out to multiple backends the
+	// merge would produce duplicates, so we short-circuit with a static
+	// response when the proxy itself is healthy.
+	mux.HandleFunc("/loki/api/v1/query", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
+
+		if handler.IsGrafanaHealthCheck(r) {
+			span.SetAttributes(attribute.Bool("proxy.health_check_intercept", true))
+			level.Info(logger).Log("msg", "Intercepted Grafana health check, returning static response")
+			handler.WriteGrafanaHealthCheckResponse(w, r, logger)
+			return
+		}
+
+		p.fanoutRequest(w, r, handler.HandleLokiQueries)
+	})
+
 	// Variable to hold the API routes and their corresponding handlers
 	apiRoutes := map[string]transformFn{
-		"/loki/api/v1/query":              handler.HandleLokiQueries,
 		"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 		"/loki/api/v1/series":             handler.HandleLokiSeries,
 		"/loki/api/v1/index/stats":        handler.HandleLokiStats,
