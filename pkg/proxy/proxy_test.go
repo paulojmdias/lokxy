@@ -678,8 +678,9 @@ func TestCreateHTTPClient_ConnectionPoolSettings(t *testing.T) {
 	require.Equal(t, 90*time.Second, transport.IdleConnTimeout)
 	require.Equal(t, 1*time.Second, transport.ExpectContinueTimeout)
 	require.True(t, transport.ForceAttemptHTTP2)
+}
 
-  func TestRoundTrip_NoMarshalWhenDebugDisabled(t *testing.T) {
+func TestRoundTrip_NoMarshalWhenDebugDisabled(t *testing.T) {
 	// Create a logger that only allows error level (debug is filtered out)
 	var buf bytes.Buffer
 	logger := log.NewLogfmtLogger(&buf)
