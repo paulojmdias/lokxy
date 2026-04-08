@@ -20,6 +20,7 @@ type TransportConfig struct {
 	MaxIdleConnsPerHost   int           `yaml:"max_idle_conns_per_host"`
 	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
 	ExpectContinueTimeout time.Duration `yaml:"expect_continue_timeout"`
+	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
 	ForceAttemptHTTP2     *bool         `yaml:"force_attempt_http2"`
 }
 

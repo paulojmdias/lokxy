@@ -154,6 +154,11 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 		expectContinueTimeout = 1 * time.Second
 	}
 
+	responseHeaderTimeout := tc.ResponseHeaderTimeout
+	if responseHeaderTimeout == 0 {
+		responseHeaderTimeout = time.Duration(instance.Timeout) * time.Second
+	}
+
 	forceHTTP2 := true
 	if tc.ForceAttemptHTTP2 != nil {
 		forceHTTP2 = *tc.ForceAttemptHTTP2
@@ -167,6 +172,7 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 		IdleConnTimeout:       idleConnTimeout,
 		ExpectContinueTimeout: expectContinueTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
 		ForceAttemptHTTP2:     forceHTTP2,
 	}
 
