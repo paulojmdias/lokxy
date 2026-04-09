@@ -173,7 +173,7 @@ Conditions can match against:
 
 ### Enforcement levels
 
-| Value | Behaviour |
+| Value | Behavior |
 |---|---|
 | `enforce` | Reject the query with HTTP 400 |
 | `warn` | Forward the query; add `X-Lokxy-Policy-Warning` response header; emit structured log |
