@@ -1,17 +1,19 @@
 package traces
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -20,10 +22,14 @@ import (
 )
 
 func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
-	// https://pkg.go.dev/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
-	exporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithInsecure(),
-	)
+	// autoexport defaults to the HTTP/protobuf protocol, Lokxy uses gRPC by default.
+	// For backward compatibility, fall back to gRPC when no protocol is explicitly defined.
+	// Same for insecure option.
+	// https://pkg.go.dev/go.opentelemetry.io/contrib/exporters/autoexport#NewSpanExporter
+	os.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", cmp.Or(os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL"), "grpc"))
+	os.Setenv("OTEL_EXPORTER_OTLP_INSECURE", cmp.Or(os.Getenv("OTEL_EXPORTER_OTLP_INSECURE"), "true"))
+
+	exporter, err := autoexport.NewSpanExporter(ctx)
 	if err != nil {
 		return nil, err
 	}
