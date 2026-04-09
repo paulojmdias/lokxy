@@ -136,6 +136,7 @@ server_groups:
         max_idle_conns_per_host: 50
         idle_conn_timeout: 120s
         expect_continue_timeout: 2s
+        response_header_timeout: 25s
         force_attempt_http2: true
 
 logging:
@@ -163,6 +164,7 @@ logging:
             * `max_idle_conns_per_host`: Maximum number of idle connections per host. Default: `20`.
             * `idle_conn_timeout`: Duration an idle connection remains open before being closed. Default: `90s`.
             * `expect_continue_timeout`: Timeout for waiting for a server's "100 Continue" response. Default: `1s`.
+            * `response_header_timeout`: Time to wait for a server's response headers after fully writing the request. Does not include response body read time. Default: value of `timeout` (server group timeout); `0` if `timeout` is also unset (no timeout).
             * `force_attempt_http2`: Forces HTTP/2 negotiation even when using custom TLS or dial functions. Default: `true`.
 
 * `logging`:
