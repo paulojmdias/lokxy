@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/log/level"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -90,16 +89,15 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 
 			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6
 
-			// define attributes from requests to spans
-			// from convention https://opentelemetry.io/docs/specs/semconv/http/http-spans/
+			// Attributes follow OTel HTTP semconv
 			span.SetAttributes(
-				attribute.String("http.request.method", r.Method),
-				attribute.String("url.full", r.URL.String()),
-				attribute.String("server.address", r.Host),
-				attribute.String("user_agent.original", r.UserAgent()),
-				attribute.String("client.address", r.RemoteAddr),
-				attribute.Int("http.response.status_code", wrappedWriter.statusCode),
-				attribute.String("http.request.header.x_request_id", r.Header.Get("X-Request-ID")),
+				semconv.HTTPRequestMethodKey.String(r.Method),
+				semconv.URLFull(r.URL.String()),
+				semconv.ServerAddress(r.Host),
+				semconv.UserAgentOriginal(r.UserAgent()),
+				semconv.ClientAddress(r.RemoteAddr),
+				semconv.HTTPResponseStatusCode(wrappedWriter.statusCode),
+				semconv.HTTPRequestHeader("x_request_id", r.Header.Get("X-Request-ID")),
 			)
 
 			if wrappedWriter.statusCode >= 400 {

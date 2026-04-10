@@ -4,13 +4,14 @@ groups:
     brief: HTTP request header attributes not covered by semconv
     attributes:
       - id: http.request.header.x_request_id
-        type: string
+        type: string[]
         stability: development
         brief: Value of the X-Request-ID header from the incoming HTTP request
         note: >
           Per OTel semconv, HTTP header attribute keys replace hyphens with
-          underscores (X-Request-ID becomes x_request_id).
-        examples: ["abc-123-def-456"]
+          underscores (X-Request-ID becomes x_request_id). HTTP header
+          attributes are typed as string arrays per semconv.
+        examples: [["abc-123-def-456"]]
 
   - id: registry.lokxy
     type: attribute_group

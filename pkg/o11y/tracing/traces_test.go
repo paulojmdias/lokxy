@@ -279,7 +279,7 @@ func TestHTTPTracesHandler(t *testing.T) {
 	require.Contains(t, attrMap["url.full"], "/api/test")
 	require.Equal(t, "test-agent", attrMap["user_agent.original"])
 	require.Equal(t, int64(200), attrMap["http.response.status_code"])
-	require.Equal(t, "test-request-123", attrMap["http.request.header.x_request_id"])
+	require.Equal(t, []string{"test-request-123"}, attrMap["http.request.header.x_request_id"])
 }
 
 func TestHTTPTracesHandlerWithError(t *testing.T) {

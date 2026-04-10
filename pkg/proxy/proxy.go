@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
@@ -285,9 +286,9 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		method := r.Method
 
 		span.SetAttributes(
-			attribute.String("url.path", path),
-			attribute.String("http.request.method", method),
-			attribute.String("url.query", r.URL.RawQuery),
+			semconv.URLPath(path),
+			semconv.HTTPRequestMethodKey.String(method),
+			semconv.URLQuery(r.URL.RawQuery),
 			attribute.Int("lokxy.server_groups", len(config.ServerGroups)),
 		)
 
