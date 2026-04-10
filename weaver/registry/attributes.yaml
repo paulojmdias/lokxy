@@ -1,4 +1,14 @@
 groups:
+  - id: registry.lokxy.http
+    type: attribute_group
+    brief: HTTP request header attributes not covered by semconv
+    attributes:
+      - id: http.request.header.x-request-id
+        type: string
+        stability: development
+        brief: Value of the X-Request-ID header from the incoming HTTP request
+        examples: ["abc-123-def-456"]
+
   - id: registry.lokxy
     type: attribute_group
     brief: Lokxy-specific proxy configuration attributes
