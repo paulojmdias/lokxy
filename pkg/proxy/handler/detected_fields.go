@@ -72,13 +72,43 @@ type detectedFieldsInB struct {
 
 // Values input variant(s)
 type detectedFieldValuesIn struct {
-	// upstream may return "field" or "label"—we read either
-	Field  string `json:"field"`
-	Label  string `json:"label"`
-	Values []struct {
+	// upstream may return "field" or "label"---we read either
+	Field  string          `json:"field"`
+	Label  string          `json:"label"`
+	Values json.RawMessage `json:"values"`
+}
+
+// parseFieldValues handles both response shapes from Loki's
+// /detected_field/{name}/values endpoint:
+//   - plain strings:  ["val1", "val2"]           (Loki 3.x default)
+//   - counted objects: [{"value":"val1","count":5}]  (older/alternative)
+func parseFieldValues(raw json.RawMessage) (map[string]int, error) {
+	out := make(map[string]int)
+	if len(raw) == 0 {
+		return out, nil
+	}
+
+	// Try plain string array first (most common).
+	var plain []string
+	if err := json.Unmarshal(raw, &plain); err == nil {
+		for _, v := range plain {
+			out[v]++
+		}
+		return out, nil
+	}
+
+	// Fall back to counted objects.
+	var counted []struct {
 		Value string `json:"value"`
 		Count int    `json:"count"`
-	} `json:"values"`
+	}
+	if err := json.Unmarshal(raw, &counted); err != nil {
+		return nil, err
+	}
+	for _, v := range counted {
+		out[v.Value] += v.Count
+	}
+	return out, nil
 }
 
 // fieldAgg accumulates cardinality, first non-empty type, and a set of parsers.
@@ -277,8 +307,13 @@ func HandleLokiDetectedFieldValues(ctx context.Context, w http.ResponseWriter, r
 		}
 
 		// NOTE: We ignore in.Field/Label for the name as we rely on the fieldName input
-		for _, v := range in.Values {
-			merged[v.Value] += v.Count
+		vals, err := parseFieldValues(in.Values)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to parse detected_field values array", "err", err)
+			continue
+		}
+		for v, cnt := range vals {
+			merged[v] += cnt
 		}
 	}
 

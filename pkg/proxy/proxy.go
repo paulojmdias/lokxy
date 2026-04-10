@@ -222,7 +222,8 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		span := trace.SpanFromContext(r.Context())
 		span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
 		labelName := r.PathValue("name")
-		if config.MetadataAsLabels.Enabled && isFieldExposed(labelName, config.MetadataAsLabels.Fields) {
+		incomingQuery := r.URL.Query().Get("query")
+		if config.MetadataAsLabels.Enabled && incomingQuery != "" && incomingQuery != "{}" && isFieldExposed(labelName, config.MetadataAsLabels.Fields) {
 			ctx := r.Context()
 			overridePath := "/loki/api/v1/detected_field/" + labelName + "/values"
 			fieldValuesCh := p.backgroundFanoutBytes(ctx, r, overridePath,
@@ -271,10 +272,17 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 
 	// /loki/api/v1/labels is registered explicitly so it can conditionally
 	// inject detected structured-metadata fields as labels.
+	//
+	// The metadata injection only runs when the incoming request carries a
+	// non-empty query parameter because Loki's /detected_fields endpoint
+	// requires a valid LogQL stream selector (it rejects empty selectors).
+	// When no query is present (e.g. Grafana's initial label-browser load)
+	// we fall through to the plain /labels handler.
 	mux.HandleFunc("/loki/api/v1/labels", func(w http.ResponseWriter, r *http.Request) {
 		span := trace.SpanFromContext(r.Context())
 		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
-		if config.MetadataAsLabels.Enabled {
+		incomingQuery := r.URL.Query().Get("query")
+		if config.MetadataAsLabels.Enabled && incomingQuery != "" && incomingQuery != "{}" {
 			ctx := r.Context()
 			fieldsCh := p.backgroundFanoutBytes(ctx, r,
 				"/loki/api/v1/detected_fields",
@@ -330,6 +338,31 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		)
 
 		level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
+
+		// Rewrite metadata field matchers in the query parameter so that
+		// structured-metadata fields injected by metadata_as_labels are
+		// handled correctly by Loki. Grafana places every selected label
+		// inside the stream selector {}, but structured-metadata fields
+		// are not stream labels and must be queried differently:
+		//   /query, /query_range  -> move to pipeline label-filter stages
+		//   everything else       -> strip from the selector entirely
+		if config.MetadataAsLabels.Enabled && len(config.MetadataAsLabels.Fields) > 0 {
+			if q := r.URL.Query().Get("query"); q != "" {
+				var mode rewriteMode
+				if path == "/loki/api/v1/query" || path == "/loki/api/v1/query_range" {
+					mode = rewriteMoveToPipeline
+				} else {
+					mode = rewriteStrip
+				}
+				if rewritten := rewriteMetadataQuery(q, config.MetadataAsLabels.Fields, mode); rewritten != q {
+					qParams := r.URL.Query()
+					qParams.Set("query", rewritten)
+					r.URL.RawQuery = qParams.Encode()
+					level.Debug(logger).Log("msg", "Rewrote metadata matchers in query",
+						"path", path, "mode", mode, "original", q, "rewritten", rewritten)
+				}
+			}
+		}
 
 		mux.ServeHTTP(w, r.WithContext(ctx))
 	}
@@ -391,7 +424,7 @@ func (p *proxy) backgroundFanoutBytes(
 	out := make(chan []byte, 1)
 	go func() {
 		cloned := r.Clone(ctx)
-		clonedURL := *r.URL          // copies both Path and RawQuery
+		clonedURL := *r.URL           // copies both Path and RawQuery
 		clonedURL.Path = overridePath // override only the path
 		cloned.URL = &clonedURL
 		rec := httptest.NewRecorder()
