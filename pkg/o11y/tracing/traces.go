@@ -90,10 +90,20 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 
 			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6
 
+			// After routing, r.Pattern contains the matched route template
+			// (e.g. "/loki/api/v1/label/{name}/values") which keeps span
+			// names bounded. Fall back to r.URL.Path when no ServeMux is used.
+			route := r.Pattern
+			if route == "" {
+				route = r.URL.Path
+			}
+			span.SetName(fmt.Sprintf("%s %s", r.Method, route))
+
 			// define attributes from requests to spans
 			// from convention https://opentelemetry.io/docs/specs/semconv/http/http-spans/
 			span.SetAttributes(
 				attribute.String("http.request.method", r.Method),
+				attribute.String("http.route", route),
 				attribute.String("url.full", r.URL.String()),
 				attribute.String("server.address", r.Host),
 				attribute.String("user_agent.original", r.UserAgent()),
@@ -112,7 +122,7 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 			level.Info(logger).Log(
 				"msg", "Request completed",
 				"method", r.Method,
-				"path", r.URL.Path,
+				"path", route,
 				"status", wrappedWriter.statusCode,
 				"duration_ms", durationMs,
 			)
