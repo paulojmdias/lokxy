@@ -34,6 +34,10 @@ test:
 benchmark:
 	$(GOCMD) test -bench=. -benchmem -run=^$$ -count=10 ./...
 
+.PHONY: integration-test
+integration-test:
+	$(GOCMD) test -v -tags=integration -timeout=120s -mod=mod ./test/integration/
+
 .PHONY: run
 run:
 	$(GOCMD) run \

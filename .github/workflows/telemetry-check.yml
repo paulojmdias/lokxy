@@ -1,0 +1,83 @@
+name: Telemetry Schema Live Check
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  telemetry-check:
+    name: Weaver Live Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      - name: Setup Weaver
+        uses: open-telemetry/weaver/.github/actions/setup-weaver@74008737d0cd04cc91f4792da9e6702375fb512f # v0.22.1
+
+      - name: Validate registry schema
+        run: weaver registry check -r ./weaver/
+
+      - name: Build lokxy image
+        run: docker compose -f mixin/play/docker-compose.telemetry-check.yml build lokxy
+
+      - name: Start stack
+        run: docker compose -f mixin/play/docker-compose.telemetry-check.yml up -d
+
+      - name: Start weaver live-check
+        run: |
+          mkdir -p weaver-report
+          weaver registry live-check \
+            -r ./weaver/ \
+            --otlp-grpc-port 4317 \
+            --inactivity-timeout 60 \
+            --format json \
+            --output ./weaver-report/ \
+            --no-stream &
+          echo "WEAVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for lokxy to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3100/ready; then
+              echo "lokxy is ready"
+              exit 0
+            fi
+            echo "Waiting for lokxy... ($i/30)"
+            sleep 2
+          done
+          echo "lokxy did not become ready in time"
+          exit 1
+
+      - name: Run integration smoke tests
+        run: make integration-test
+        env:
+          LOKXY_ADDR: localhost:3100
+
+      - name: Wait for weaver to finish
+        run: |
+          wait "$WEAVER_PID"
+          WEAVER_EXIT=$?
+          echo "weaver exit code: $WEAVER_EXIT"
+          exit $WEAVER_EXIT
+
+      - name: Upload weaver report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weaver-live-check-report
+          path: weaver-report/
+          if-no-files-found: ignore
+
+      - name: Teardown stack
+        if: always()
+        run: docker compose -f mixin/play/docker-compose.telemetry-check.yml down -v

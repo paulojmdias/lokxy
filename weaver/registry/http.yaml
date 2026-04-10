@@ -1,0 +1,26 @@
+groups:
+  - id: span.lokxy.http.request
+    type: span
+    span_kind: server
+    stability: development
+    brief: >
+      Span for each HTTP request received by lokxy. Created by HTTPTracesHandler
+      and wraps all downstream proxy work for that request.
+    note: >
+      Span name is set dynamically as "{http.request.method} {url.path}".
+      Attributes follow OTel HTTP semconv v1.40.0.
+    attributes:
+      - ref: http.request.method
+        requirement_level: required
+      - ref: url.full
+        requirement_level: required
+      - ref: server.address
+        requirement_level: required
+      - ref: http.response.status_code
+        requirement_level: required
+      - ref: user_agent.original
+        requirement_level: opt_in
+      - ref: client.address
+        requirement_level: opt_in
+      - ref: http.request.header.x-request-id
+        requirement_level: opt_in

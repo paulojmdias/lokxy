@@ -14,6 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Setup Weaver
+        uses: open-telemetry/weaver/.github/actions/setup-weaver@74008737d0cd04cc91f4792da9e6702375fb512f # v0.22.1
+      - name: Validate telemetry schema
+        run: weaver registry check -r ./weaver/
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
