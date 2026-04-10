@@ -1,6 +1,0 @@
-name: lokxy
-description: Telemetry schema for the lokxy Loki multi-instance proxy
-schema_url: https://github.com/paulojmdias/lokxy/schemas/0.1.0
-dependencies:
-  - name: otel
-    registry_path: https://github.com/open-telemetry/semantic-conventions@v1.40.0[model]
