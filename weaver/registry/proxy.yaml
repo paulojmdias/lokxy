@@ -47,7 +47,7 @@ groups:
 
   - id: event.lokxy.proxy.upstream_request.exception
     type: event
-    event_name: exception
+    name: exception
     stability: development
     brief: >
       Recorded when an error occurs during the upstream request
