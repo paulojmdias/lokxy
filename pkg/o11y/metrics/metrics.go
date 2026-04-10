@@ -105,6 +105,14 @@ func createMetrics() error {
 	return nil
 }
 
+// Reinitialize re-creates all metric instruments using the current global
+// [otel.MeterProvider]. This is intended for tests that replace the provider
+// (e.g. with a ManualReader) and need the package-level counters and histograms
+// to point at the new provider.
+func Reinitialize() error {
+	return createMetrics()
+}
+
 // NewServeMux returns an [http.ServeMux] preconfigured with a Prometheus
 // metrics handler.
 //

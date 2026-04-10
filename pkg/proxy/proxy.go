@@ -395,7 +395,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 			// Record the request
 			metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
-				attribute.String("path", r.URL.Path),
+				attribute.String("path", r.Pattern),
 				attribute.String("method", r.Method),
 				attribute.String("server_group", instance.Name),
 			))
@@ -406,7 +406,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				requestSpan.SetStatus(codes.Error, "Failed to create request")
 				// Record error count
 				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
+					attribute.String("path", r.Pattern),
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))
@@ -439,7 +439,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				requestSpan.SetStatus(codes.Error, "Error querying Loki instance")
 				// Record error count
 				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
+					attribute.String("path", r.Pattern),
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))
@@ -460,7 +460,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 			// Measure response time
 			metrics.RequestDuration.Record(upstreamCtx, time.Since(startTime).Seconds(),
 				metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
+					attribute.String("path", r.Pattern),
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				),
@@ -499,7 +499,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				requestSpan.RecordError(err)
 				requestSpan.SetStatus(codes.Error, "Failed to read upstream response body")
 				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
-					attribute.String("path", r.URL.Path),
+					attribute.String("path", r.Pattern),
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))

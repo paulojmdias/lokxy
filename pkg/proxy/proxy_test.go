@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -17,8 +18,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
+	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
@@ -814,4 +820,47 @@ func TestFanout_HeaderLoggingRedactsSensitiveValues(t *testing.T) {
 	// Sensitive Authorization value should be redacted
 	require.NotContains(t, buf.String(), "top-secret-token")
 	require.Contains(t, buf.String(), "REDACTED")
+}
+
+func TestMetricPathLabel_UsesRoutePattern(t *testing.T) {
+	// Set up a real OTel meter with a ManualReader so we can inspect attributes.
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	otel.SetMeterProvider(mp)
+	require.NoError(t, metrics.Reinitialize())
+	t.Cleanup(func() { _ = mp.Shutdown(context.Background()) })
+
+	srv := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/label/namespace/values": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"status":"success","data":["v1"]}`)
+		},
+	})
+	defer srv.Close()
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/label/namespace/values", nil)
+	NewServeMux(log.NewNopLogger(), mkConfig(srv.URL)).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	// Collect metrics and extract the "path" attribute from lokxy_request_count_total.
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	var found string
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "lokxy_request_count_total" {
+				continue
+			}
+			for _, dp := range m.Data.(metricdata.Sum[int64]).DataPoints {
+				if v, ok := dp.Attributes.Value(attribute.Key("path")); ok {
+					found = v.AsString()
+				}
+			}
+		}
+	}
+
+	require.Equal(t, "/loki/api/v1/label/{name}/values", found,
+		"path metric label must be the route template, not the resolved URL")
 }
