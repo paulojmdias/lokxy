@@ -396,7 +396,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 			metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
 				attribute.String("path", r.URL.Path),
 				attribute.String("method", r.Method),
-				attribute.String("instance", instance.Name),
+				attribute.String("server_group", instance.Name),
 			))
 
 			req, err := http.NewRequestWithContext(upstreamCtx, r.Method, targetURL, bodyReader())
@@ -407,7 +407,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
 					attribute.String("path", r.URL.Path),
 					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
+					attribute.String("server_group", instance.Name),
 				))
 				level.Error(p.logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
 				return &proxyresponse.BackendError{
@@ -440,7 +440,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
 					attribute.String("path", r.URL.Path),
 					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
+					attribute.String("server_group", instance.Name),
 				))
 				level.Error(p.logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
 				return &proxyresponse.BackendError{
@@ -461,7 +461,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				metric.WithAttributes(
 					attribute.String("path", r.URL.Path),
 					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
+					attribute.String("server_group", instance.Name),
 				),
 			)
 
@@ -500,7 +500,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
 					attribute.String("path", r.URL.Path),
 					attribute.String("method", r.Method),
-					attribute.String("instance", instance.Name),
+					attribute.String("server_group", instance.Name),
 				))
 				level.Error(p.logger).Log("msg", "Failed to read upstream response body", "instance", instance.Name, "err", err)
 				return &proxyresponse.BackendError{
