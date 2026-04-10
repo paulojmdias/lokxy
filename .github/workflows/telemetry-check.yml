@@ -27,8 +27,8 @@ jobs:
       - name: Setup Weaver
         uses: open-telemetry/weaver/.github/actions/setup-weaver@74008737d0cd04cc91f4792da9e6702375fb512f # v0.22.1
 
-      - name: Validate registry schema
-        run: weaver registry check -r ./weaver/ --future
+      - name: Validate telemetry schema
+        run: weaver registry check -r ./weaver/ --diagnostic-format gh_workflow_command --future
 
       - name: Build lokxy image
         run: docker compose -f mixin/play/docker-compose.telemetry-check.yml build lokxy
