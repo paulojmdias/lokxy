@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"time"
@@ -220,7 +221,24 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 	mux.HandleFunc("/loki/api/v1/label/{name}/values", func(w http.ResponseWriter, r *http.Request) {
 		span := trace.SpanFromContext(r.Context())
 		span.SetAttributes(attribute.String("proxy.route_type", "label_values"))
-		p.fanoutRequest(w, r, handler.HandleLokiLabels)
+		labelName := r.PathValue("name")
+		if config.MetadataAsLabels.Enabled && isFieldExposed(labelName, config.MetadataAsLabels.Fields) {
+			ctx := r.Context()
+			overridePath := "/loki/api/v1/detected_field/" + labelName + "/values"
+			fieldValuesCh := p.backgroundFanoutBytes(ctx, r, overridePath,
+				func(c context.Context, w http.ResponseWriter,
+					results <-chan *proxyresponse.BackendResponse, logger log.Logger,
+				) {
+					handler.HandleLokiDetectedFieldValues(c, w, results, labelName, logger)
+				})
+			p.fanoutRequest(w, r, func(c context.Context, w http.ResponseWriter,
+				results <-chan *proxyresponse.BackendResponse, logger log.Logger,
+			) {
+				handler.HandleLokiLabelValuesWithMetadataField(c, w, results, <-fieldValuesCh, logger)
+			})
+		} else {
+			p.fanoutRequest(w, r, handler.HandleLokiLabels)
+		}
 	})
 
 	mux.HandleFunc("/loki/api/v1/detected_field/{name}/values", func(w http.ResponseWriter, r *http.Request) {
@@ -251,12 +269,32 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		p.fanoutRequest(w, r, handler.HandleLokiQueries)
 	})
 
+	// /loki/api/v1/labels is registered explicitly so it can conditionally
+	// inject detected structured-metadata fields as labels.
+	mux.HandleFunc("/loki/api/v1/labels", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
+		if config.MetadataAsLabels.Enabled {
+			ctx := r.Context()
+			fieldsCh := p.backgroundFanoutBytes(ctx, r,
+				"/loki/api/v1/detected_fields",
+				handler.HandleLokiDetectedFields)
+			p.fanoutRequest(w, r, func(c context.Context, w http.ResponseWriter,
+				results <-chan *proxyresponse.BackendResponse, logger log.Logger,
+			) {
+				handler.HandleLokiLabelsWithMetadata(c, w, results, <-fieldsCh,
+					config.MetadataAsLabels.Fields, logger)
+			})
+		} else {
+			p.fanoutRequest(w, r, handler.HandleLokiLabels)
+		}
+	})
+
 	// Variable to hold the API routes and their corresponding handlers
 	apiRoutes := map[string]transformFn{
 		"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 		"/loki/api/v1/series":             handler.HandleLokiSeries,
 		"/loki/api/v1/index/stats":        handler.HandleLokiStats,
-		"/loki/api/v1/labels":             handler.HandleLokiLabels,
 		"/loki/api/v1/index/volume":       handler.HandleLokiVolume,
 		"/loki/api/v1/index/volume_range": handler.HandleLokiVolumeRange,
 		"/loki/api/v1/detected_labels":    handler.HandleLokiDetectedLabels,
@@ -334,6 +372,47 @@ func forwardFirstResponse(_ context.Context, w http.ResponseWriter, results <-ch
 		level.Error(logger).Log("msg", "No healthy upstreams available")
 		http.Error(w, "No healthy upstreams available", http.StatusBadGateway)
 	}
+}
+
+// backgroundFanoutBytes fans out to overridePath on all backends, runs fn to
+// aggregate the responses into a buffer, and returns a channel that delivers
+// the response body bytes when complete. It executes concurrently so the
+// caller can start its own fanoutRequest in parallel.
+//
+// The original request's query string (start=, end=, query=, limit=, etc.) is
+// preserved on the cloned request, so field discovery is automatically scoped
+// to the same time range and stream selector as the incoming label request.
+func (p *proxy) backgroundFanoutBytes(
+	ctx context.Context,
+	r *http.Request,
+	overridePath string,
+	fn transformFn,
+) <-chan []byte {
+	out := make(chan []byte, 1)
+	go func() {
+		cloned := r.Clone(ctx)
+		clonedURL := *r.URL          // copies both Path and RawQuery
+		clonedURL.Path = overridePath // override only the path
+		cloned.URL = &clonedURL
+		rec := httptest.NewRecorder()
+		p.fanoutRequest(rec, cloned, fn)
+		out <- rec.Body.Bytes()
+	}()
+	return out
+}
+
+// isFieldExposed reports whether the given field name should be surfaced as a
+// label. When allowedFields is empty every field is allowed.
+func isFieldExposed(name string, allowedFields []string) bool {
+	if len(allowedFields) == 0 {
+		return true
+	}
+	for _, f := range allowedFields {
+		if f == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transformFn) {

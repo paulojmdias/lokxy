@@ -51,10 +51,21 @@ type LoggerConfig struct {
 	Format string `yaml:"format"`
 }
 
+// MetadataAsLabelsConfig controls whether detected structured-metadata fields
+// are surfaced as Loki labels in the /labels and /label/{name}/values endpoints.
+type MetadataAsLabelsConfig struct {
+	// Enabled turns the feature on or off. Default: false.
+	Enabled bool `yaml:"enabled"`
+	// Fields is an optional allowlist of field names to expose as labels.
+	// When empty, all fields returned by /loki/api/v1/detected_fields are exposed.
+	Fields []string `yaml:"fields,omitempty"`
+}
+
 // Config represents the overall proxy configuration
 type Config struct {
-	ServerGroups []ServerGroup `yaml:"server_groups"`
-	Logging      LoggerConfig  `yaml:"logging"`
+	ServerGroups     []ServerGroup          `yaml:"server_groups"`
+	Logging          LoggerConfig           `yaml:"logging"`
+	MetadataAsLabels MetadataAsLabelsConfig `yaml:"metadata_as_labels"`
 }
 
 // LoadConfig loads and parses the YAML configuration file

@@ -13,3 +13,18 @@ server_groups:
 logging:
   level: "info"
   format: "json"
+
+# metadata_as_labels surfaces Loki structured-metadata fields as ordinary labels
+# in /loki/api/v1/labels and /loki/api/v1/label/{name}/values. This lets tools
+# like Grafana discover and filter by high-cardinality fields (trace_id, user_id,
+# etc.) that are stored as metadata rather than stream labels.
+# Fields are discovered dynamically by calling /detected_fields on each backend.
+#
+# metadata_as_labels:
+#   enabled: true
+#   # Optional: restrict which fields are exposed. Omit (or leave empty) to
+#   # expose all detected fields from every server group.
+#   fields:
+#     - trace_id
+#     - user_id
+#     - request_id
