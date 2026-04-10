@@ -74,6 +74,18 @@ jobs:
           sleep 1
           WEAVER_EXIT=$(cat /tmp/weaver-exit-code)
           echo "weaver exit code: $WEAVER_EXIT"
+          echo ""
+          echo "=== Weaver Live-Check Report ==="
+          if [ -d "./weaver-report" ] && [ "$(ls -A ./weaver-report 2>/dev/null)" ]; then
+            for f in ./weaver-report/*; do
+              echo "--- $(basename "$f") ---"
+              cat "$f"
+              echo ""
+            done
+          else
+            echo "(no report files found in ./weaver-report/)"
+          fi
+          echo "================================"
           exit "$WEAVER_EXIT"
 
       - name: Upload weaver report
