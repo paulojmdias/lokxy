@@ -39,7 +39,7 @@ jobs:
       - name: Start weaver live-check
         run: |
           mkdir -p weaver-report
-          (weaver registry live-check \
+          (set +e; weaver registry live-check \
             -r ./weaver/ \
             --otlp-grpc-port 4317 \
             --inactivity-timeout 60 \
