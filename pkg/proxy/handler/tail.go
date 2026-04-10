@@ -136,7 +136,7 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
 					attribute.String("path", "/loki/api/v1/tail"),
 					attribute.String("method", "GET"),
-					attribute.String("instance", instance.Name),
+					attribute.String("server_group", instance.Name),
 				))
 				level.Error(logger).Log("msg", "Failed to create WebSocket dialer", "instance", instance.Name, "err", err)
 				return
@@ -146,7 +146,7 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 			metrics.RequestCount.Add(upstreamCtx, 1, metric.WithAttributes(
 				attribute.String("path", "/loki/api/v1/tail"),
 				attribute.String("method", "GET"),
-				attribute.String("instance", instance.Name),
+				attribute.String("server_group", instance.Name),
 			))
 
 			// Create WebSocket connection to Loki instance
@@ -165,7 +165,7 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 				metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
 					attribute.String("path", "/loki/api/v1/tail"),
 					attribute.String("method", "GET"),
-					attribute.String("instance", instance.Name),
+					attribute.String("server_group", instance.Name),
 				))
 				level.Error(logger).Log("msg", "Failed to connect to Loki WebSocket", "instance", instance.Name, "err", err)
 				if resp != nil {
@@ -174,7 +174,7 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
 						attribute.String("path", "/loki/api/v1/tail"),
 						attribute.String("method", "GET"),
-						attribute.String("instance", instance.Name),
+						attribute.String("server_group", instance.Name),
 					))
 					body, _ := io.ReadAll(resp.Body)
 					resp.Body.Close()
@@ -204,7 +204,7 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
 						attribute.String("path", "/loki/api/v1/tail"),
 						attribute.String("method", "GET"),
-						attribute.String("instance", instance.Name),
+						attribute.String("server_group", instance.Name),
 					))
 					level.Error(logger).Log("msg", "Error reading WebSocket message", "instance", instance.Name, "err", err)
 
@@ -222,7 +222,7 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 					metrics.RequestFailures.Add(upstreamCtx, 1, metric.WithAttributes(
 						attribute.String("path", "/loki/api/v1/tail"),
 						attribute.String("method", "GET"),
-						attribute.String("instance", instance.Name),
+						attribute.String("server_group", instance.Name),
 					))
 					level.Error(logger).Log("msg", "Failed to decode WebSocket message", "instance", instance.Name, "err", err)
 					backendSpan.SetAttributes(attribute.Int("upstream.messages_received", messageCount))
