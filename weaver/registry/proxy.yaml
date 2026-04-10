@@ -42,3 +42,14 @@ groups:
         requirement_level: opt_in
       - ref: upstream.content_length
         requirement_level: opt_in
+    events:
+      - id: event.lokxy.proxy.upstream_request.exception
+        event_name: exception
+        brief: >
+          Recorded when an error occurs during the upstream request
+          (e.g. connection refused, timeout, body read failure).
+        attributes:
+          - ref: exception.type
+            requirement_level: recommended
+          - ref: exception.message
+            requirement_level: recommended

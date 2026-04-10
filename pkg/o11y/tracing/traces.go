@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -52,9 +52,9 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 	return tracerProvider, nil
 }
 
-func CreateSpan(ctx context.Context, spanName string) (context.Context, trace.Span) {
+func CreateSpan(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	tracer := otel.Tracer("lokxy")
-	return tracer.Start(ctx, spanName)
+	return tracer.Start(ctx, spanName, opts...)
 }
 
 func ExtractTraceFromHTTPRequest(r *http.Request) context.Context {
@@ -80,7 +80,7 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			ctx := ExtractTraceFromHTTPRequest(r)
-			ctx, span := CreateSpan(ctx, fmt.Sprintf("%s %s", r.Method, r.URL.Path))
+			ctx, span := CreateSpan(ctx, fmt.Sprintf("%s %s", r.Method, r.URL.Path), trace.WithSpanKind(trace.SpanKindServer))
 			defer span.End()
 
 			// captures status code
@@ -99,8 +99,7 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 				attribute.String("user_agent.original", r.UserAgent()),
 				attribute.String("client.address", r.RemoteAddr),
 				attribute.Int("http.response.status_code", wrappedWriter.statusCode),
-				attribute.Float64("http.request_duration_ms", durationMs),
-				attribute.String("http.request.header.x-request-id", r.Header.Get("X-Request-ID")),
+				attribute.String("http.request.header.x_request_id", r.Header.Get("X-Request-ID")),
 			)
 
 			if wrappedWriter.statusCode >= 400 {

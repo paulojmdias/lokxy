@@ -285,10 +285,10 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		method := r.Method
 
 		span.SetAttributes(
-			attribute.String("path", path),
-			attribute.String("method", method),
-			attribute.String("query", r.URL.RawQuery),
-			attribute.Int("server_groups", len(config.ServerGroups)),
+			attribute.String("url.path", path),
+			attribute.String("http.request.method", method),
+			attribute.String("url.query", r.URL.RawQuery),
+			attribute.Int("lokxy.server_groups", len(config.ServerGroups)),
 		)
 
 		level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
@@ -366,7 +366,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 	wg, ctx := errgroup.WithContext(ctx)
 	for _, instance := range p.config.ServerGroups {
 		wg.Go(func() error {
-			upstreamCtx, requestSpan := traces.CreateSpan(ctx, "proxy_upstream_request")
+			upstreamCtx, requestSpan := traces.CreateSpan(ctx, "proxy_upstream_request", trace.WithSpanKind(trace.SpanKindClient))
 			defer requestSpan.End()
 
 			requestSpan.SetAttributes(

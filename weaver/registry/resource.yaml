@@ -1,0 +1,8 @@
+groups:
+  - id: resource.lokxy
+    type: resource
+    stability: development
+    brief: Resource attributes for the lokxy service
+    attributes:
+      - ref: service.name
+        requirement_level: required

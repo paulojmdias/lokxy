@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -279,12 +279,7 @@ func TestHTTPTracesHandler(t *testing.T) {
 	require.Contains(t, attrMap["url.full"], "/api/test")
 	require.Equal(t, "test-agent", attrMap["user_agent.original"])
 	require.Equal(t, int64(200), attrMap["http.response.status_code"])
-	require.Equal(t, "test-request-123", attrMap["http.request.header.x-request-id"])
-
-	duration, exists := attrMap["http.request_duration_ms"]
-	require.True(t, exists)
-	require.IsType(t, float64(0), duration)
-	require.Greater(t, duration.(float64), 0.0)
+	require.Equal(t, "test-request-123", attrMap["http.request.header.x_request_id"])
 }
 
 func TestHTTPTracesHandlerWithError(t *testing.T) {

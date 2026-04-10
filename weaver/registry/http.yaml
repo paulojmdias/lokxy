@@ -22,5 +22,7 @@ groups:
         requirement_level: opt_in
       - ref: client.address
         requirement_level: opt_in
-      - ref: http.request.header.x-request-id
+      - ref: http.request.header.x_request_id
+        requirement_level: opt_in
+      - ref: http.route
         requirement_level: opt_in
