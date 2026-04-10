@@ -29,18 +29,23 @@ groups:
             - id: api_route
               value: api_route
               brief: Standard Loki API fanout route
+              stability: development
             - id: label_values
               value: label_values
               brief: Label values fanout route
+              stability: development
             - id: detected_field_values
               value: detected_field_values
               brief: Detected field values fanout route
+              stability: development
             - id: websocket
               value: websocket
               brief: WebSocket tail route
+              stability: development
             - id: first_response
               value: first_response
               brief: Fallback route that returns the first upstream response
+              stability: development
         stability: development
         brief: Type of proxy route matched for this request
         examples: ["api_route", "websocket"]
