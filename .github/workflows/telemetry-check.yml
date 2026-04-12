@@ -14,6 +14,7 @@ permissions:
 jobs:
   telemetry-check:
     name: Weaver Live Check
+    if: github.event_name == 'pull_request' || !github.event.repository.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
