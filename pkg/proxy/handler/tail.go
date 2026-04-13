@@ -75,7 +75,7 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 	defer span.End()
 
 	span.SetAttributes(
-		attribute.Int("server_groups", len(config.ServerGroups)),
+		attribute.Int("lokxy.server_groups", len(config.ServerGroups)),
 	)
 
 	// Upgrade the HTTP connection to a WebSocket connection

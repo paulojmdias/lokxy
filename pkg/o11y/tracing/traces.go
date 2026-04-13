@@ -12,12 +12,11 @@ import (
 	"github.com/go-kit/log/level"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -52,9 +51,9 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 	return tracerProvider, nil
 }
 
-func CreateSpan(ctx context.Context, spanName string) (context.Context, trace.Span) {
+func CreateSpan(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	tracer := otel.Tracer("lokxy")
-	return tracer.Start(ctx, spanName)
+	return tracer.Start(ctx, spanName, opts...)
 }
 
 func ExtractTraceFromHTTPRequest(r *http.Request) context.Context {
@@ -80,7 +79,7 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			ctx := ExtractTraceFromHTTPRequest(r)
-			ctx, span := CreateSpan(ctx, fmt.Sprintf("%s %s", r.Method, r.URL.Path))
+			ctx, span := CreateSpan(ctx, fmt.Sprintf("%s %s", r.Method, r.URL.Path), trace.WithSpanKind(trace.SpanKindServer))
 			defer span.End()
 
 			// captures status code
@@ -99,18 +98,16 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 			}
 			span.SetName(fmt.Sprintf("%s %s", r.Method, route))
 
-			// define attributes from requests to spans
-			// from convention https://opentelemetry.io/docs/specs/semconv/http/http-spans/
+			// Attributes follow OTel HTTP semconv
 			span.SetAttributes(
-				attribute.String("http.request.method", r.Method),
-				attribute.String("http.route", route),
-				attribute.String("url.full", r.URL.String()),
-				attribute.String("server.address", r.Host),
-				attribute.String("user_agent.original", r.UserAgent()),
-				attribute.String("client.address", r.RemoteAddr),
-				attribute.Int("http.response.status_code", wrappedWriter.statusCode),
-				attribute.Float64("http.request_duration_ms", durationMs),
-				attribute.String("http.request.header.x-request-id", r.Header.Get("X-Request-ID")),
+				semconv.HTTPRequestMethodKey.String(r.Method),
+				semconv.HTTPRoute(route),
+				semconv.URLFull(r.URL.String()),
+				semconv.ServerAddress(r.Host),
+				semconv.UserAgentOriginal(r.UserAgent()),
+				semconv.ClientAddress(r.RemoteAddr),
+				semconv.HTTPResponseStatusCode(wrappedWriter.statusCode),
+				semconv.HTTPRequestHeader("x_request_id", r.Header.Get("X-Request-ID")),
 			)
 
 			if wrappedWriter.statusCode >= 400 {

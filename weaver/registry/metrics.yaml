@@ -1,0 +1,59 @@
+groups:
+  - id: metric.lokxy.request.count
+    type: metric
+    metric_name: lokxy_request_count_total
+    instrument: counter
+    unit: "{request}"
+    stability: development
+    brief: Total number of upstream requests proxied, labeled per path/method/server_group
+    attributes:
+      - id: path
+        type: string
+        stability: development
+        brief: >
+          Matched route pattern from the Go ServeMux (e.g. /loki/api/v1/label/{name}/values),
+          not the resolved URL path. This keeps metric cardinality bounded.
+        examples: ["/loki/api/v1/labels", "/loki/api/v1/label/{name}/values", "/loki/api/v1/detected_field/{name}/values"]
+        requirement_level: required
+      - id: method
+        type: string
+        stability: development
+        brief: HTTP method of the request
+        examples: ["GET", "POST"]
+        requirement_level: required
+      - id: server_group
+        type: string
+        stability: development
+        brief: Name of the upstream server group
+        examples: ["Loki 1", "Loki 2"]
+        requirement_level: required
+
+  - id: metric.lokxy.request.duration
+    type: metric
+    metric_name: lokxy_request_duration_seconds
+    instrument: histogram
+    unit: s
+    stability: development
+    brief: Duration of upstream proxy requests in seconds
+    attributes:
+      - ref: path
+        requirement_level: required
+      - ref: method
+        requirement_level: required
+      - ref: server_group
+        requirement_level: required
+
+  - id: metric.lokxy.request.failures
+    type: metric
+    metric_name: lokxy_request_failures_total
+    instrument: counter
+    unit: "{request}"
+    stability: development
+    brief: Total number of upstream requests that resulted in an error
+    attributes:
+      - ref: path
+        requirement_level: required
+      - ref: method
+        requirement_level: required
+      - ref: server_group
+        requirement_level: required

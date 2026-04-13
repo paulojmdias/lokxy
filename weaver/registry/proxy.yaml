@@ -1,0 +1,59 @@
+groups:
+  - id: span.lokxy.proxy.handler
+    type: span
+    span_kind: internal
+    stability: development
+    brief: >
+      Internal span created for every request that reaches the proxy handler,
+      wrapping route selection and the fanout to all upstream Loki instances.
+    note: Span name is "lokxy_proxy_handler".
+    attributes:
+      - ref: url.path
+        requirement_level: required
+      - ref: http.request.method
+        requirement_level: required
+      - ref: url.query
+        requirement_level: opt_in
+      - ref: lokxy.server_groups
+        requirement_level: required
+      - ref: proxy.route_type
+        requirement_level: required
+      - ref: proxy.health_check_intercept
+        requirement_level: opt_in
+
+  - id: span.lokxy.proxy.upstream_request
+    type: span
+    span_kind: client
+    stability: development
+    brief: >
+      Client span for each upstream Loki request within a fanout. One span is
+      created per configured server group per incoming request.
+    note: Span name is "proxy_upstream_request".
+    attributes:
+      - ref: upstream.name
+        requirement_level: required
+      - ref: upstream.url
+        requirement_level: required
+      - ref: upstream.target_url
+        requirement_level: required
+      - ref: upstream.status_code
+        requirement_level: recommended
+      - ref: upstream.content_type
+        requirement_level: opt_in
+      - ref: upstream.content_length
+        requirement_level: opt_in
+    events:
+      - event.lokxy.proxy.upstream_request.exception
+
+  - id: event.lokxy.proxy.upstream_request.exception
+    type: event
+    name: exception
+    stability: development
+    brief: >
+      Recorded when an error occurs during the upstream request
+      (e.g. connection refused, timeout, body read failure).
+    attributes:
+      - ref: exception.type
+        requirement_level: recommended
+      - ref: exception.message
+        requirement_level: recommended

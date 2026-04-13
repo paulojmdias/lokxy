@@ -1,0 +1,102 @@
+name: Telemetry Schema Live Check
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  telemetry-check:
+    name: Weaver Live Check
+    if: github.event_name == 'pull_request' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      - name: Setup Weaver
+        uses: open-telemetry/weaver/.github/actions/setup-weaver@74008737d0cd04cc91f4792da9e6702375fb512f # v0.22.1
+
+      - name: Validate telemetry schema
+        run: weaver registry check -r ./weaver/ --future
+
+      - name: Build lokxy image
+        run: docker compose -f mixin/play/docker-compose.telemetry-check.yml build lokxy
+
+      - name: Start stack
+        run: docker compose -f mixin/play/docker-compose.telemetry-check.yml up -d
+
+      - name: Start weaver live-check
+        run: |
+          mkdir -p weaver-report
+          (set +e; weaver registry live-check \
+            -r ./weaver/ \
+            --otlp-grpc-port 4317 \
+            --inactivity-timeout 60 \
+            --format json \
+            --output ./weaver-report/ \
+            --no-stream; echo $? > /tmp/weaver-exit-code) &
+          echo "WEAVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for lokxy to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3100/ready; then
+              echo "lokxy is ready"
+              exit 0
+            fi
+            echo "Waiting for lokxy... ($i/30)"
+            sleep 2
+          done
+          echo "lokxy did not become ready in time"
+          exit 1
+
+      - name: Run integration smoke tests
+        run: make integration-test
+        env:
+          LOKXY_ADDR: localhost:3100
+
+      - name: Wait for weaver to finish
+        run: |
+          while kill -0 "$WEAVER_PID" 2>/dev/null; do
+            sleep 2
+          done
+          sleep 1
+          WEAVER_EXIT=$(cat /tmp/weaver-exit-code)
+          echo "weaver exit code: $WEAVER_EXIT"
+          echo ""
+          echo "=== Weaver Live-Check Report ==="
+          if [ -d "./weaver-report" ] && [ "$(ls -A ./weaver-report 2>/dev/null)" ]; then
+            for f in ./weaver-report/*; do
+              echo "--- $(basename "$f") ---"
+              cat "$f"
+              echo ""
+            done
+          else
+            echo "(no report files found in ./weaver-report/)"
+          fi
+          echo "================================"
+          exit "$WEAVER_EXIT"
+
+      - name: Upload weaver report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weaver-live-check-report
+          path: weaver-report/
+          if-no-files-found: ignore
+
+      - name: Teardown stack
+        if: always()
+        run: docker compose -f mixin/play/docker-compose.telemetry-check.yml down -v

@@ -1,0 +1,97 @@
+groups:
+  - id: registry.lokxy.http
+    type: attribute_group
+    brief: HTTP request header attributes not covered by semconv
+    attributes:
+      - id: http.request.header.x_request_id
+        type: string[]
+        stability: development
+        brief: Value of the X-Request-ID header from the incoming HTTP request
+        note: >
+          Per OTel semconv, HTTP header attribute keys replace hyphens with
+          underscores (X-Request-ID becomes x_request_id). HTTP header
+          attributes are typed as string arrays per semconv.
+        examples: [["abc-123-def-456"]]
+
+  - id: registry.lokxy
+    type: attribute_group
+    brief: Lokxy-specific proxy configuration attributes
+    attributes:
+      - id: lokxy.server_groups
+        type: int
+        stability: development
+        brief: Number of configured server groups (upstream Loki instances)
+        examples: [2, 3]
+
+  - id: registry.lokxy.proxy
+    type: attribute_group
+    brief: Proxy routing decision attributes
+    attributes:
+      - id: proxy.route_type
+        type:
+          members:
+            - id: api_route
+              value: api_route
+              brief: Standard Loki API fanout route
+              stability: development
+            - id: label_values
+              value: label_values
+              brief: Label values fanout route
+              stability: development
+            - id: detected_field_values
+              value: detected_field_values
+              brief: Detected field values fanout route
+              stability: development
+            - id: websocket
+              value: websocket
+              brief: WebSocket tail route
+              stability: development
+            - id: first_response
+              value: first_response
+              brief: Fallback route that returns the first upstream response
+              stability: development
+        stability: development
+        brief: Type of proxy route matched for this request
+        examples: ["api_route", "websocket"]
+      - id: proxy.health_check_intercept
+        type: boolean
+        stability: development
+        brief: >
+          True when the Grafana datasource health check query was intercepted
+          and a static response was returned instead of fanning out to backends.
+        examples: [true]
+
+  - id: registry.lokxy.upstream
+    type: attribute_group
+    brief: Per-upstream request attributes set on proxy_upstream_request spans
+    attributes:
+      - id: upstream.name
+        type: string
+        stability: development
+        brief: Logical name of the upstream Loki server group
+        examples: ["Loki 1", "Loki 2"]
+      - id: upstream.url
+        type: string
+        stability: development
+        brief: Base URL of the upstream Loki instance
+        examples: ["http://loki1:3101", "http://loki2:3102"]
+      - id: upstream.target_url
+        type: string
+        stability: development
+        brief: Full target URL including path and query string
+        examples: ["http://loki1:3101/loki/api/v1/labels?start=1700000000"]
+      - id: upstream.status_code
+        type: int
+        stability: development
+        brief: HTTP status code returned by the upstream Loki instance
+        examples: [200, 400, 503]
+      - id: upstream.content_type
+        type: string
+        stability: development
+        brief: Content-Type header of the upstream response
+        examples: ["application/json"]
+      - id: upstream.content_length
+        type: int
+        stability: development
+        brief: Content-Length of the upstream response in bytes (-1 if unknown)
+        examples: [1024, -1]
