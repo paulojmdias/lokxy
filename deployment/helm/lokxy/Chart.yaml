@@ -1,7 +1,7 @@
 apiVersion: v2
 name: lokxy
-appVersion: v0.7.0
-version: 0.1.0
+appVersion: v0.8.1
+version: 0.1.1
 kubeVersion: ">=1.23.0-0"
 description: Lokxy is a powerful log aggregator for Loki
 maintainers:
