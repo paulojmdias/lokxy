@@ -7,6 +7,32 @@ entries:
         - name: Chart Source
           url: https://github.com/paulojmdias/lokxy
     apiVersion: v2
+    appVersion: v0.8.1
+    created: "2026-04-14T14:24:06.127981586Z"
+    description: Lokxy is a powerful log aggregator for Loki
+    digest: 6b1492da8a41dcf51bd0c17c797924ceafe5fb515198309571900e29e85f7e63
+    keywords:
+    - logging
+    - lokxy
+    - loki
+    kubeVersion: '>=1.23.0-0'
+    maintainers:
+    - email: me@paulodias.xyz
+      name: Paulo Dias
+      url: https://github.com/paulojmdias
+    - name: Hélia Barroso
+      url: https://github.com/heliapb
+    name: lokxy
+    type: application
+    urls:
+    - https://github.com/paulojmdias/lokxy/releases/download/lokxy-0.1.1/lokxy-0.1.1.tgz
+    version: 0.1.1
+  - annotations:
+      artifacthub.io/license: GPL-3.0-or-later
+      artifacthub.io/links: |
+        - name: Chart Source
+          url: https://github.com/paulojmdias/lokxy
+    apiVersion: v2
     appVersion: v0.7.0
     created: "2025-12-31T15:57:03.582942427Z"
     description: Lokxy is a powerful log aggregator for Loki
@@ -79,4 +105,4 @@ entries:
     urls:
     - https://github.com/paulojmdias/lokxy/releases/download/lokxy-0.0.1/lokxy-0.0.1.tgz
     version: 0.0.1
-generated: "2025-12-31T15:57:03.58294948Z"
+generated: "2026-04-14T14:24:06.127997225Z"
