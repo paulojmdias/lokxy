@@ -190,7 +190,7 @@ Two per-server-group options let you trade strict consistency for availability:
   merged from the healthy groups. The failure is **not** surfaced to the client (only
   logged at debug level and counted in the `lokxy_request_degraded_total` metric).
 
-* `downgrade_error: true` — same partial-results behaviour, but the group's error is
+* `downgrade_error: true` — same partial-results behavior, but the group's error is
   **converted into a warning** rather than being silent. For `query`/`query_range` the
   warning is added to the native Loki `warnings[]` field of the response, which clients
   such as Grafana render as a panel warning. For other endpoints (labels, series,
@@ -203,7 +203,7 @@ configuration error.
 
 Notes:
 
-* A **required** group failing still fails the entire query (default behaviour,
+* A **required** group failing still fails the entire query (default behavior,
   unchanged).
 * If **every** contributing group is optional and they **all** fail, lokxy forwards the
   last upstream error (e.g. `502`/the upstream status) rather than returning a
