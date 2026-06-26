@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"net/http/httptest"
 	"testing"
 
@@ -76,7 +75,7 @@ func BenchmarkHandleLokiLabels(b *testing.B) {
 				w := httptest.NewRecorder()
 				b.StartTimer()
 
-				HandleLokiLabels(context.Background(), w, results, logger)
+				HandleLokiLabels(b.Context(), w, results, nil, logger)
 			}
 		})
 	}
@@ -107,7 +106,7 @@ func BenchmarkHandleLokiQueries(b *testing.B) {
 					w := httptest.NewRecorder()
 					b.StartTimer()
 
-					HandleLokiQueries(context.Background(), w, results, logger)
+					HandleLokiQueries(b.Context(), w, results, nil, logger)
 				}
 			})
 		}
@@ -132,7 +131,7 @@ func BenchmarkHandleLokiSeries(b *testing.B) {
 				w := httptest.NewRecorder()
 				b.StartTimer()
 
-				HandleLokiSeries(context.Background(), w, results, logger)
+				HandleLokiSeries(b.Context(), w, results, nil, logger)
 			}
 		})
 	}

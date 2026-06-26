@@ -27,6 +27,11 @@ var (
 	// RequestFailures counts the total number of requests that resulted in an
 	// error or failure during processing.
 	RequestFailures metric.Int64Counter = noop.Int64Counter{}
+
+	// RequestDegraded counts upstream failures that did not fail the overall
+	// query because the server group was configured with ignore_error or
+	// downgrade_error. The "outcome" attribute distinguishes the two.
+	RequestDegraded metric.Int64Counter = noop.Int64Counter{}
 )
 
 // Initialize prepares the OpenTelemetry metric pipeline for the service.
@@ -101,6 +106,13 @@ func createMetrics() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create RequestFailures metric: %w", err)
+	}
+
+	RequestDegraded, err = meter.Int64Counter("lokxy_request_degraded_total",
+		metric.WithDescription("Total number of upstream failures tolerated via ignore_error or downgrade_error"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create RequestDegraded metric: %w", err)
 	}
 	return nil
 }

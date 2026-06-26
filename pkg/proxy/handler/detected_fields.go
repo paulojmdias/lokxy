@@ -111,7 +111,7 @@ func addDetectedField(merged map[string]*fieldAgg, label, typ string, cardinalit
 
 // HandleLokiDetectedFields aggregates detected fields from multiple Loki instances.
 // Accepts both "fields" and "detectedFields" input envelopes and emits the "fields" envelope.
-func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+func HandleLokiDetectedFields(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ []string, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_detected_fields")
 	defer span.End()
 

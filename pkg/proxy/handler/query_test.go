@@ -49,7 +49,7 @@ func TestHandleLokiQueries_StreamResult(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -91,7 +91,7 @@ func TestHandleLokiQueries_MatrixResult(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -134,7 +134,7 @@ func TestHandleLokiQueries_VectorResult(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -190,7 +190,7 @@ func TestHandleLokiQueries_MultipleStreamResponses(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -224,7 +224,7 @@ func TestHandleLokiQueries_WithEncodingFlags(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -263,7 +263,7 @@ func TestHandleLokiQueries_WithStructuredMetadata(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -293,7 +293,7 @@ func TestHandleLokiQueries_EmptyResult(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -318,7 +318,7 @@ func TestHandleLokiQueries_InvalidJSON(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -344,7 +344,7 @@ func TestHandleLokiQueries_ResponseReaderError(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -396,7 +396,7 @@ func TestHandleLokiQueries_PartialFailure(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -417,7 +417,7 @@ func TestHandleLokiQueries_NoResponses(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -464,7 +464,7 @@ func TestHandleLokiQueries_MultipleEncodingFlagsDeduplication(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -499,7 +499,7 @@ func TestHandleLokiQueries_NoEncodingFlags(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
@@ -534,7 +534,7 @@ func TestHandleLokiQueries_EmptyBody(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	// Should still produce a valid (empty) encoded response
 	require.NotEmpty(t, w.Body.Bytes())
@@ -591,7 +591,7 @@ func TestHandleLokiQueries_VectorSumMerge(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -649,7 +649,7 @@ func TestHandleLokiQueries_VectorSumMergeDifferentMetrics(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -706,7 +706,7 @@ func TestHandleLokiQueries_MatrixSumMerge(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, logger)
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))

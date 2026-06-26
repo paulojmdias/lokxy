@@ -1,0 +1,15 @@
+server_groups:
+  - name: primary
+    url: http://loki-primary:3100
+    timeout: 30
+  - name: archive
+    url: http://loki-archive:3100
+    timeout: 30
+    ignore_error: true
+  - name: backup
+    url: http://loki-backup:3100
+    timeout: 30
+    downgrade_error: true
+logging:
+  level: info
+  format: json

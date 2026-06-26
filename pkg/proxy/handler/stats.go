@@ -12,7 +12,7 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
-func HandleLokiStats(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+func HandleLokiStats(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ []string, logger log.Logger) {
 	var totalStreams, totalChunks, totalBytes, totalEntries int
 
 	for backendResp := range results {

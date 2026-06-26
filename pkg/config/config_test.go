@@ -110,8 +110,31 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
+			name:       "error handling fields",
+			configFile: "testdata/error_handling_config.yaml",
+			wantErr:    false,
+			validateFunc: func(t *testing.T, cfg *Config) {
+				require.Len(t, cfg.ServerGroups, 3)
+
+				// Defaults: both flags false when unset.
+				require.False(t, cfg.ServerGroups[0].IgnoreError)
+				require.False(t, cfg.ServerGroups[0].DowngradeError)
+
+				require.True(t, cfg.ServerGroups[1].IgnoreError)
+				require.False(t, cfg.ServerGroups[1].DowngradeError)
+
+				require.False(t, cfg.ServerGroups[2].IgnoreError)
+				require.True(t, cfg.ServerGroups[2].DowngradeError)
+			},
+		},
+		{
 			name:       "invalid empty config",
 			configFile: "testdata/invalid_empty.yaml",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid both error handling flags",
+			configFile: "testdata/invalid_both_error_handling.yaml",
 			wantErr:    true,
 		},
 		{
@@ -179,4 +202,18 @@ func TestValidate_MissingURL(t *testing.T) {
 	err := cfg.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "url is required")
+}
+
+func TestValidate_MutuallyExclusiveErrorHandling(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{{
+			Name:           "loki1",
+			URL:            "http://localhost:3100",
+			IgnoreError:    true,
+			DowngradeError: true,
+		}},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mutually exclusive")
 }

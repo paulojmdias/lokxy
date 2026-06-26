@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,7 +29,7 @@ type encodingFlagsEnvelope struct {
 }
 
 // Handle Loki query and query_range responses
-func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
 	var mergedVector loghttp.Vector
@@ -76,6 +77,10 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 		}
 
 		resultType = queryResult.Data.ResultType
+
+		// Preserve any warnings the upstream itself returned (Loki populates
+		// the native warnings[] field, e.g. for incomplete results).
+		warnings = append(warnings, queryResult.Warnings...)
 
 		// Process based on ResultType
 		switch queryResult.Data.ResultType {
@@ -250,6 +255,14 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 			"result":     finalResult,
 			"stats":      mergedStats,
 		},
+	}
+
+	// Surface warnings (downgraded server-group errors and any upstream
+	// warnings) on the native Loki warnings[] field so clients such as Grafana
+	// can display them.
+	if len(warnings) > 0 {
+		slices.Sort(warnings)
+		finalResponse["warnings"] = slices.Compact(warnings)
 	}
 
 	// Convert map back to a slice of strings

@@ -43,6 +43,17 @@ type ServerGroup struct {
 	Timeout          int               `yaml:"timeout"`
 	Headers          map[string]string `yaml:"headers"`
 	HTTPClientConfig HTTPClientConfig  `yaml:"http_client_config"` // Add HTTP config
+
+	// IgnoreError makes this server group's response optional: if it fails but
+	// other groups succeed, the overall query still succeeds with partial
+	// results and no warning is surfaced.
+	IgnoreError bool `yaml:"ignore_error"`
+
+	// DowngradeError also makes this server group's response optional, but
+	// converts its errors into warnings surfaced on the merged response instead
+	// of failing the query. IgnoreError and DowngradeError are mutually
+	// exclusive; setting both on the same server group is a configuration error.
+	DowngradeError bool `yaml:"downgrade_error"`
 }
 
 // LoggerConfig contains the logger configuration details.
@@ -90,6 +101,9 @@ func (c *Config) Validate() error {
 		}
 		if sg.URL == "" {
 			return fmt.Errorf("server_groups[%d]: url is required", i)
+		}
+		if sg.IgnoreError && sg.DowngradeError {
+			return fmt.Errorf("server_groups[%d]: ignore_error and downgrade_error are mutually exclusive", i)
 		}
 	}
 
