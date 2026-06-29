@@ -31,7 +31,7 @@ func TestHandleLokiSeries_SingleResponse(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -77,7 +77,7 @@ func TestHandleLokiSeries_MultipleResponses(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -102,7 +102,7 @@ func TestHandleLokiSeries_EmptyResponse(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -124,7 +124,7 @@ func TestHandleLokiSeries_InvalidJSON(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -148,7 +148,7 @@ func TestHandleLokiSeries_ResponseReaderError(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -184,7 +184,7 @@ func TestHandleLokiSeries_PartialFailure(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -215,7 +215,7 @@ func TestHandleLokiSeries_DuplicateSeriesAcrossBackends(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -259,7 +259,7 @@ func TestHandleLokiSeries_ComplexLabels(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -288,7 +288,7 @@ func TestHandleLokiSeries_EmptyData(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiSeries(t.Context(), w, results, logger)
+	HandleLokiSeries(t.Context(), w, results, nil, logger)
 
 	var out struct {
 		Status string              `json:"status"`

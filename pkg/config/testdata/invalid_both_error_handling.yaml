@@ -1,0 +1,8 @@
+server_groups:
+  - name: loki1
+    url: http://localhost:3100
+    ignore_error: true
+    downgrade_error: true
+logging:
+  level: info
+  format: json

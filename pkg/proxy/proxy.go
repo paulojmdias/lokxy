@@ -191,7 +191,14 @@ type (
 		logger  log.Logger
 		clients map[string]*http.Client
 	}
-	transformFn func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, log.Logger)
+	transformFn func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, []string, log.Logger)
+
+	// softFailure is an upstream failure from a server group configured with
+	// ignore_error or downgrade_error. It does not fail the overall query.
+	softFailure struct {
+		berr      *proxyresponse.BackendError
+		downgrade bool // true => surface as a warning; false => ignore silently
+	}
 )
 
 func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWriter, *http.Request) {
@@ -228,7 +235,7 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 		span := trace.SpanFromContext(r.Context())
 		span.SetAttributes(attribute.String("proxy.route_type", "detected_field_values"))
 		fieldName := r.PathValue("name")
-		p.fanoutRequest(w, r, func(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+		p.fanoutRequest(w, r, func(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ []string, logger log.Logger) {
 			handler.HandleLokiDetectedFieldValues(ctx, w, results, fieldName, logger)
 		})
 	})
@@ -299,7 +306,7 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 }
 
 // Forward the first valid response for non-query endpoints
-func forwardFirstResponse(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+func forwardFirstResponse(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ []string, logger log.Logger) {
 	forwarded := false
 	for backendResp := range results {
 		resp := backendResp.Response
@@ -361,12 +368,29 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 		return io.NopCloser(bytes.NewReader(bodyBytes))
 	}
 	results := make(chan *proxyresponse.BackendResponse, len(p.config.ServerGroups))
+	// softErrs collects failures from server groups configured with
+	// ignore_error/downgrade_error so they do not fail the overall query.
+	softErrs := make(chan softFailure, len(p.config.ServerGroups))
 	ctx := r.Context()
 
 	// Forward requests using the custom RoundTripper
 	wg, ctx := errgroup.WithContext(ctx)
 	for _, instance := range p.config.ServerGroups {
 		wg.Go(func() error {
+			// Classify this server group's error-handling policy. A required
+			// group (the default) fails the whole query on error; an optional
+			// group's failure is recorded as a soft failure instead. The two
+			// flags are mutually exclusive (enforced by config.Validate).
+			optional := instance.IgnoreError || instance.DowngradeError
+			downgrade := instance.DowngradeError
+			recordFailure := func(berr *proxyresponse.BackendError) error {
+				if !optional {
+					return berr
+				}
+				softErrs <- softFailure{berr: berr, downgrade: downgrade}
+				return nil
+			}
+
 			upstreamCtx, requestSpan := traces.CreateSpan(ctx, "proxy_upstream_request", trace.WithSpanKind(trace.SpanKindClient))
 			defer requestSpan.End()
 
@@ -379,11 +403,11 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 			if !ok {
 				requestSpan.SetStatus(codes.Error, "Missing HTTP client")
 				level.Error(p.logger).Log("msg", "Missing HTTP client", "instance", instance.Name)
-				return &proxyresponse.BackendError{
+				return recordFailure(&proxyresponse.BackendError{
 					Err:         fmt.Errorf("missing HTTP client for instance %s", instance.Name),
 					BackendName: instance.Name,
 					BackendURL:  instance.URL,
-				}
+				})
 			}
 
 			targetURL := instance.URL + r.URL.Path
@@ -411,11 +435,11 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("server_group", instance.Name),
 				))
 				level.Error(p.logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
-				return &proxyresponse.BackendError{
+				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,
 					BackendURL:  instance.URL,
-				}
+				})
 			}
 
 			req.Header = r.Header.Clone()
@@ -444,11 +468,11 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("server_group", instance.Name),
 				))
 				level.Error(p.logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
-				return &proxyresponse.BackendError{
+				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,
 					BackendURL:  instance.URL,
-				}
+				})
 			}
 
 			requestSpan.SetAttributes(
@@ -485,13 +509,13 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					)
 					bodyBytes = []byte("Failed to read error response")
 				}
-				return &proxyresponse.BackendError{
+				return recordFailure(&proxyresponse.BackendError{
 					Err:         fmt.Errorf("non-2xx response from the upstream: %s", instance.Name),
 					BackendName: instance.Name,
 					BackendURL:  instance.URL,
 					StatusCode:  resp.StatusCode,
 					Data:        bodyBytes,
-				}
+				})
 			}
 			respBodyBytes, err := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
@@ -504,11 +528,11 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("server_group", instance.Name),
 				))
 				level.Error(p.logger).Log("msg", "Failed to read upstream response body", "instance", instance.Name, "err", err)
-				return &proxyresponse.BackendError{
+				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,
 					BackendURL:  instance.URL,
-				}
+				})
 			}
 			resp.Body = io.NopCloser(bytes.NewReader(respBodyBytes))
 			resp.ContentLength = int64(len(respBodyBytes))
@@ -523,6 +547,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 	// Await for all responses
 	err := wg.Wait()
 	close(results)
+	close(softErrs)
 	if err != nil {
 		berr := &proxyresponse.BackendError{}
 		if errors.As(err, &berr) {
@@ -551,6 +576,48 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 		return
 	}
 
+	// No required server group failed. Process soft failures (optional groups
+	// configured with ignore_error/downgrade_error): downgraded ones become
+	// warnings on the merged response, ignored ones are silent.
+	var warnings []string
+	var lastSoft *proxyresponse.BackendError
+	softCount := 0
+	for sf := range softErrs {
+		softCount++
+		lastSoft = sf.berr
+		outcome := "ignored"
+		if sf.downgrade {
+			outcome = "downgraded"
+			msg := sf.berr.Error()
+			if sf.berr.StatusCode != 0 {
+				msg = fmt.Sprintf("status %d: %s", sf.berr.StatusCode, strings.TrimSpace(string(sf.berr.Data)))
+			}
+			warnings = append(warnings, fmt.Sprintf("server group %q error downgraded to warning: %s", sf.berr.BackendName, msg))
+			level.Warn(p.logger).Log("msg", "Server group error downgraded to warning", "instance", sf.berr.BackendName, "err", sf.berr.Error())
+		} else {
+			level.Debug(p.logger).Log("msg", "Server group error ignored", "instance", sf.berr.BackendName, "err", sf.berr.Error())
+		}
+		metrics.RequestDegraded.Add(r.Context(), 1, metric.WithAttributes(
+			attribute.String("path", r.Pattern),
+			attribute.String("method", r.Method),
+			attribute.String("server_group", sf.berr.BackendName),
+			attribute.String("outcome", outcome),
+		))
+	}
+
+	// If every contributing server group was optional and all of them failed,
+	// there is no data to merge. Forward the last failure rather than return a
+	// misleading empty success.
+	if len(results) == 0 && softCount > 0 {
+		level.Error(p.logger).Log("msg", "All optional server groups failed", "instance", lastSoft.BackendName)
+		if lastSoft.StatusCode != 0 {
+			proxyresponse.ForwardBackendError(w, lastSoft.BackendName, lastSoft.StatusCode, lastSoft.Data, p.logger)
+		} else {
+			proxyresponse.ForwardConnectionError(w, lastSoft, p.logger)
+		}
+		return
+	}
+
 	// Combine responses into expected response
-	fn(r.Context(), w, results, p.logger)
+	fn(r.Context(), w, results, warnings, p.logger)
 }

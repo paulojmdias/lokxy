@@ -32,7 +32,7 @@ type LokiPatternsResponse struct {
 }
 
 // HandleLokiPatterns aggregates /patterns responses from multiple Loki instances.
-func HandleLokiPatterns(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+func HandleLokiPatterns(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ []string, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_patterns")
 	defer span.End()
 

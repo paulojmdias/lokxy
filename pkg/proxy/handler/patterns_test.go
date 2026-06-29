@@ -33,7 +33,7 @@ func TestHandleLokiPatterns_SingleResponse(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiPatterns(t.Context(), w, results, logger)
+	HandleLokiPatterns(t.Context(), w, results, nil, logger)
 
 	var out LokiPatternsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -79,7 +79,7 @@ func TestHandleLokiPatterns_MergeAcrossBackends(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiPatterns(t.Context(), w, results, logger)
+	HandleLokiPatterns(t.Context(), w, results, nil, logger)
 
 	var out LokiPatternsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -118,7 +118,7 @@ func TestHandleLokiPatterns_Empty(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiPatterns(t.Context(), w, results, logger)
+	HandleLokiPatterns(t.Context(), w, results, nil, logger)
 
 	var out LokiPatternsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -135,7 +135,7 @@ func TestHandleLokiPatterns_InvalidJSON(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiPatterns(t.Context(), w, results, logger)
+	HandleLokiPatterns(t.Context(), w, results, nil, logger)
 
 	var out LokiPatternsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -155,7 +155,7 @@ func TestHandleLokiPatterns_ResponseReaderError(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiPatterns(t.Context(), w, results, logger)
+	HandleLokiPatterns(t.Context(), w, results, nil, logger)
 
 	var out LokiPatternsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -170,7 +170,7 @@ func TestHandleLokiPatterns_NilResponse(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiPatterns(t.Context(), w, results, logger)
+	HandleLokiPatterns(t.Context(), w, results, nil, logger)
 
 	var out LokiPatternsResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))

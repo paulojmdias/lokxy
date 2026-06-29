@@ -44,7 +44,7 @@ func TestDetectedFields_VariantA_Single(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiDetectedFields(t.Context(), w, results, logger)
+	HandleLokiDetectedFields(t.Context(), w, results, nil, logger)
 
 	var out LokiDetectedFieldsOut
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -76,7 +76,7 @@ func TestDetectedFields_VariantB_Merge(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiDetectedFields(t.Context(), w, results, logger)
+	HandleLokiDetectedFields(t.Context(), w, results, nil, logger)
 
 	var out LokiDetectedFieldsOut
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -106,7 +106,7 @@ func TestDetectedFields_ParsersUnionAndType(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiDetectedFields(t.Context(), w, results, logger)
+	HandleLokiDetectedFields(t.Context(), w, results, nil, logger)
 
 	var out LokiDetectedFieldsOut
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -130,7 +130,7 @@ func TestDetectedFields_InvalidJSONAndReaderErr(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiDetectedFields(t.Context(), w, results, logger)
+	HandleLokiDetectedFields(t.Context(), w, results, nil, logger)
 
 	var out LokiDetectedFieldsOut
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
@@ -248,7 +248,7 @@ func TestHandleLokiDetectedFields_NilResponse(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiDetectedFields(t.Context(), w, results, logger)
+	HandleLokiDetectedFields(t.Context(), w, results, nil, logger)
 
 	var out LokiDetectedFieldsOut
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))

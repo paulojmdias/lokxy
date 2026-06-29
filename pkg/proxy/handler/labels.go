@@ -13,7 +13,7 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
 )
 
-func HandleLokiLabels(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+func HandleLokiLabels(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ []string, logger log.Logger) {
 	mergedLabelValues := make(map[string]struct{})
 
 	for backendResp := range results {

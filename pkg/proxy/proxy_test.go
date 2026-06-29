@@ -473,6 +473,103 @@ func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 	require.Contains(t, responseBody, "connection refused")
 }
 
+// streamResultBody is a minimal Loki streams response used by the
+// error-handling tests below.
+const streamResultBody = `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"a"},"values":[["1609459200000000000","hello"]]}],"stats":{}}}`
+
+// ignore_error: a failing optional group is excluded; the query still succeeds
+// with partial results and no warning is surfaced.
+func TestProxy_IgnoreError_PartialResultsNoWarning(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query_range": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, streamResultBody)
+		},
+	})
+	defer s1.Close()
+	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query_range": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, "boom")
+		},
+	})
+	defer s2.Close()
+
+	cfg := mkConfig(s1.URL, s2.URL)
+	cfg.ServerGroups[1].IgnoreError = true // sg2 optional
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?query={app=\"a\"}", nil)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Contains(t, rr.Body.String(), "hello")
+	require.NotContains(t, rr.Body.String(), "warnings")
+}
+
+// downgrade_error: a failing optional group is excluded but its error is
+// surfaced as a warning on the merged response.
+func TestProxy_DowngradeError_SurfacesWarning(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query_range": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, streamResultBody)
+		},
+	})
+	defer s1.Close()
+	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query_range": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, "boom")
+		},
+	})
+	defer s2.Close()
+
+	cfg := mkConfig(s1.URL, s2.URL)
+	cfg.ServerGroups[1].DowngradeError = true // sg2 optional
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?query={app=\"a\"}", nil)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+	require.Contains(t, body, "hello")
+	require.Contains(t, body, "warnings")
+	require.Contains(t, body, "sg2") // failing group name
+	require.Contains(t, body, "downgraded")
+}
+
+// When every contributing group is optional and all fail, forward the last
+// failure instead of returning a misleading empty success.
+func TestProxy_AllOptionalGroupsFail_ForwardsError(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	fail := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "boom")
+	}
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{"/loki/api/v1/query_range": fail})
+	defer s1.Close()
+	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{"/loki/api/v1/query_range": fail})
+	defer s2.Close()
+
+	cfg := mkConfig(s1.URL, s2.URL)
+	cfg.ServerGroups[0].IgnoreError = true
+	cfg.ServerGroups[1].DowngradeError = true
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?query={app=\"a\"}", nil)
+	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+
+	require.GreaterOrEqual(t, rr.Code, 400)
+	require.Contains(t, rr.Header().Get("Failed-Backend"), "sg")
+}
+
 // roundTripFunc lets us use a plain function as an http.RoundTripper in tests.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
@@ -560,7 +657,7 @@ func TestForwardFirstResponse_MultipleBackends(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	forwardFirstResponse(t.Context(), w, results, logger)
+	forwardFirstResponse(t.Context(), w, results, nil, logger)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, body1, w.Body.String())
@@ -573,7 +670,7 @@ func TestForwardFirstResponse_NoResponses(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	forwardFirstResponse(t.Context(), w, results, logger)
+	forwardFirstResponse(t.Context(), w, results, nil, logger)
 
 	require.Equal(t, http.StatusBadGateway, w.Code)
 	require.Contains(t, w.Body.String(), "No healthy upstreams available")

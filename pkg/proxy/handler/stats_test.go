@@ -46,7 +46,7 @@ func TestHandleLokiStats_SingleResponse(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -74,7 +74,7 @@ func TestHandleLokiStats_MultipleResponses(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -97,7 +97,7 @@ func TestHandleLokiStats_EmptyStats(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -117,7 +117,7 @@ func TestHandleLokiStats_InvalidJSON(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -139,7 +139,7 @@ func TestHandleLokiStats_ResponseReaderError(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -173,7 +173,7 @@ func TestHandleLokiStats_PartialFailure(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -201,7 +201,7 @@ func TestHandleLokiStats_LargeNumbers(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -229,7 +229,7 @@ func TestHandleLokiStats_MixedZeroAndNonZero(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -247,7 +247,7 @@ func TestHandleLokiStats_NoResponses(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 
@@ -269,7 +269,7 @@ func TestHandleLokiStats_EmptyBody(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiStats(t.Context(), w, results, logger)
+	HandleLokiStats(t.Context(), w, results, nil, logger)
 
 	response := decodeStatsResponse(t, w)
 	require.Equal(t, 0, response.Streams)

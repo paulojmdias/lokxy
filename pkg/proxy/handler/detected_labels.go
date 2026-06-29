@@ -30,7 +30,7 @@ type LokiDetectedLabelsResponse struct {
 }
 
 // HandleLokiDetectedLabels aggregates detected labels from multiple Loki instances
-func HandleLokiDetectedLabels(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, logger log.Logger) {
+func HandleLokiDetectedLabels(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, _ []string, logger log.Logger) {
 	ctx, span := traces.CreateSpan(ctx, "handle_detected_labels")
 	defer span.End()
 

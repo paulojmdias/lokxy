@@ -96,7 +96,7 @@ func TestHandleLokiVolume(t *testing.T) {
 			close(results)
 
 			w := httptest.NewRecorder()
-			HandleLokiVolume(t.Context(), w, results, logger)
+			HandleLokiVolume(t.Context(), w, results, nil, logger)
 
 			var volumeResponse VolumeResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
@@ -117,7 +117,7 @@ func TestHandleLokiVolumeWithInvalidJSON(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiVolume(t.Context(), w, results, logger)
+	HandleLokiVolume(t.Context(), w, results, nil, logger)
 
 	var volumeResponse VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
@@ -138,7 +138,7 @@ func TestHandleLokiVolumeResponseReaderError(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiVolume(t.Context(), w, results, logger)
+	HandleLokiVolume(t.Context(), w, results, nil, logger)
 
 	var volumeResponse VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))
@@ -243,7 +243,7 @@ func TestHandleLokiVolume_SameMetricSumming(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiVolume(t.Context(), w, results, logger)
+	HandleLokiVolume(t.Context(), w, results, nil, logger)
 
 	var resp VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -259,7 +259,7 @@ func TestHandleLokiVolume_NilResponseBody(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiVolume(t.Context(), w, results, logger)
+	HandleLokiVolume(t.Context(), w, results, nil, logger)
 
 	var resp VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -282,7 +282,7 @@ func TestHandleLokiVolumeRange_SameMetricMerging(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiVolumeRange(t.Context(), w, results, logger)
+	HandleLokiVolumeRange(t.Context(), w, results, nil, logger)
 
 	var resp VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -301,7 +301,7 @@ func TestHandleLokiVolumeRange_InvalidJSON(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiVolumeRange(t.Context(), w, results, logger)
+	HandleLokiVolumeRange(t.Context(), w, results, nil, logger)
 
 	var resp VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -316,7 +316,7 @@ func TestHandleLokiVolumeRange_ReadError(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiVolumeRange(t.Context(), w, results, logger)
+	HandleLokiVolumeRange(t.Context(), w, results, nil, logger)
 
 	var resp VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -331,7 +331,7 @@ func TestHandleLokiVolumeRange_NilResponseBody(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiVolumeRange(t.Context(), w, results, logger)
+	HandleLokiVolumeRange(t.Context(), w, results, nil, logger)
 
 	var resp VolumeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -414,7 +414,7 @@ func TestHandleLokiVolumeRange(t *testing.T) {
 			close(results)
 
 			w := httptest.NewRecorder()
-			HandleLokiVolumeRange(t.Context(), w, results, logger)
+			HandleLokiVolumeRange(t.Context(), w, results, nil, logger)
 
 			var volumeResponse VolumeResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &volumeResponse))

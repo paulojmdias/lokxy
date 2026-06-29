@@ -28,7 +28,7 @@ func TestHandleLokiLabels_SingleResponse(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiLabels(t.Context(), w, results, logger)
+	HandleLokiLabels(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -57,7 +57,7 @@ func TestHandleLokiLabels_MultipleResponses(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiLabels(t.Context(), w, results, logger)
+	HandleLokiLabels(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -92,7 +92,7 @@ func TestHandleLokiLabels_EmptyResponse(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiLabels(t.Context(), w, results, logger)
+	HandleLokiLabels(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -113,7 +113,7 @@ func TestHandleLokiLabels_InvalidJSON(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiLabels(t.Context(), w, results, logger)
+	HandleLokiLabels(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -136,7 +136,7 @@ func TestHandleLokiLabels_ResponseReaderError(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiLabels(t.Context(), w, results, logger)
+	HandleLokiLabels(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -167,7 +167,7 @@ func TestHandleLokiLabels_DuplicateLabelsAcrossBackends(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiLabels(t.Context(), w, results, logger)
+	HandleLokiLabels(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -205,7 +205,7 @@ func TestHandleLokiLabels_PartialFailure(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiLabels(t.Context(), w, results, logger)
+	HandleLokiLabels(t.Context(), w, results, nil, logger)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
