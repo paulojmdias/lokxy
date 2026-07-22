@@ -30,6 +30,10 @@ import (
 
 // ---------- helpers ----------
 
+// nonexistentCAFile is a CA path that never exists, used to force
+// createHTTPClient to fail.
+const nonexistentCAFile = "/nonexistent/ca.pem"
+
 // mustMux builds a Proxy from config and returns a serve mux with the
 // lifecycle endpoint disabled, failing the test on construction errors.
 func mustMux(tb testing.TB, logger log.Logger, config *cfg.Config) *http.ServeMux {
@@ -625,7 +629,7 @@ func TestCreateHTTPClient_InsecureSkipVerify(t *testing.T) {
 
 func TestCreateHTTPClient_InvalidCAFile(t *testing.T) {
 	sg := cfg.ServerGroup{Name: "loki1", URL: "https://localhost:3100"}
-	sg.HTTPClientConfig.TLSConfig.CAFile = "/nonexistent/ca.pem"
+	sg.HTTPClientConfig.TLSConfig.CAFile = nonexistentCAFile
 
 	_, err := createHTTPClient(sg, log.NewNopLogger())
 	require.Error(t, err)
@@ -721,7 +725,7 @@ func TestProxyHandler_HTTPClientCreationFailure(t *testing.T) {
 				URL:  "http://localhost:3100",
 				HTTPClientConfig: func() cfg.HTTPClientConfig {
 					hc := cfg.HTTPClientConfig{}
-					hc.TLSConfig.CAFile = "/nonexistent/ca.pem"
+					hc.TLSConfig.CAFile = nonexistentCAFile
 					return hc
 				}(),
 			},
@@ -783,7 +787,7 @@ func TestProxy_ApplyConfig_InvalidKeepsOldConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	badCfg := mkConfig("http://localhost:1")
-	badCfg.ServerGroups[0].HTTPClientConfig.TLSConfig.CAFile = "/nonexistent/ca.pem"
+	badCfg.ServerGroups[0].HTTPClientConfig.TLSConfig.CAFile = nonexistentCAFile
 	require.Error(t, p.ApplyConfig(badCfg))
 
 	// The previous configuration still serves.
@@ -810,7 +814,7 @@ func TestProxy_ApplyConfig_ConcurrentWithRequests(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			cfgCopy := mkConfig(backend.URL)
 			if err := p.ApplyConfig(cfgCopy); err != nil {
 				t.Errorf("ApplyConfig failed: %v", err)
@@ -819,7 +823,7 @@ func TestProxy_ApplyConfig_ConcurrentWithRequests(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 		mux.ServeHTTP(rr, req)

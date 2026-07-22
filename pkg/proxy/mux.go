@@ -47,7 +47,7 @@ func NewServeMux(logger log.Logger, p *Proxy, reload func() error, enableLifecyc
 	proxyMux.HandleFunc("/-/reload", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost && r.Method != http.MethodPut {
 			w.Header().Set("Allow", "POST, PUT")
-			http.Error(w, "method not allowed: use POST", http.StatusMethodNotAllowed)
+			http.Error(w, "method not allowed: use POST or PUT", http.StatusMethodNotAllowed)
 			return
 		}
 		if !enableLifecycle || reload == nil {

@@ -79,7 +79,7 @@ type reloader struct {
 	path    string
 	proxy   *proxy.Proxy
 	logger  kitlog.Logger
-	logging config.LoggerConfig // logging config at startup; changing it requires a restart
+	logging config.LoggerConfig // last-seen logging config; changing it requires a restart
 }
 
 func (r *reloader) Reload(ctx context.Context) error {
@@ -98,6 +98,7 @@ func (r *reloader) Reload(ctx context.Context) error {
 
 	if newCfg.Logging != r.logging {
 		level.Warn(r.logger).Log("msg", "Logging configuration changed on reload; logging changes require a restart to take effect")
+		r.logging = newCfg.Logging
 	}
 	metrics.RecordConfigReload(ctx, true)
 	level.Info(r.logger).Log("msg", "Configuration reloaded", "path", r.path)

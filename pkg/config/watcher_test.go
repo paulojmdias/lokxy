@@ -106,7 +106,7 @@ func TestWatch_DebounceCollapsesBursts(t *testing.T) {
 	changed := startWatch(t, path)
 
 	// A burst of writes well within the debounce window...
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		require.NoError(t, os.WriteFile(path, []byte("a: 1\n"), 0o600))
 		time.Sleep(10 * time.Millisecond)
 	}
