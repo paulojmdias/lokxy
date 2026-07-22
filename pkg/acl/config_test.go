@@ -89,6 +89,13 @@ func TestACLConfig_Validate(t *testing.T) {
 			wantErr: "require[0]: name is required",
 		},
 		{
+			name: "require entry invalid type",
+			cfg: ACLConfig{Enabled: true, Rules: []Rule{
+				{Name: "r", Action: ActionRequireMatcher, Require: []RequireSpec{{Name: "ns", Types: []string{"=="}}}},
+			}},
+			wantErr: "require[0]: type \"==\" is not a valid matcher operator",
+		},
+		{
 			name:    "inject_matcher without inject block",
 			cfg:     ACLConfig{Enabled: true, Rules: []Rule{{Name: "r", Action: ActionInjectMatcher}}},
 			wantErr: "needs an inject block with a name",

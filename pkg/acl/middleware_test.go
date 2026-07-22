@@ -147,3 +147,64 @@ func TestMiddleware_TailEndpointEnforced(t *testing.T) {
 	require.False(t, next.called)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+func TestMiddleware_MissingQueryParamPassesThrough(t *testing.T) {
+	next := &nextRecorder{}
+	h := Middleware(func() *Engine { return blockEmptyEngine() }, nopLogger())(next)
+
+	// Enforced endpoint but no query parameter at all: nothing to evaluate.
+	r := httptest.NewRequest("GET", `/loki/api/v1/query_range`, nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.True(t, next.called)
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestMiddleware_EmptyQueryValuePassesThrough(t *testing.T) {
+	next := &nextRecorder{}
+	h := Middleware(func() *Engine { return blockEmptyEngine() }, nopLogger())(next)
+
+	r := httptest.NewRequest("GET", `/loki/api/v1/query_range?query=`, nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.True(t, next.called)
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+// errReader always fails, to exercise the body-read failure path.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+func TestMiddleware_BodyReadErrorFailsOpen(t *testing.T) {
+	next := &nextRecorder{}
+	h := Middleware(func() *Engine { return blockEmptyEngine() }, nopLogger())(next)
+
+	r := httptest.NewRequest("POST", "/loki/api/v1/query_range", errReader{})
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	// Body could not be read; fail open rather than reject.
+	require.True(t, next.called)
+}
+
+// failWriter is a ResponseWriter whose body writes always fail, to exercise the
+// error branch in writeRejection.
+type failWriter struct{ header http.Header }
+
+func (f *failWriter) Header() http.Header {
+	if f.header == nil {
+		f.header = http.Header{}
+	}
+	return f.header
+}
+func (f *failWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+func (f *failWriter) WriteHeader(int)           {}
+
+func TestWriteRejection_WriteErrorIsHandled(t *testing.T) {
+	// Must not panic when the response body cannot be written.
+	writeRejection(&failWriter{}, "nope", nopLogger())
+}

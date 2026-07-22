@@ -194,6 +194,40 @@ func TestEngine_Evaluate_DefaultActionBlock(t *testing.T) {
 	require.Equal(t, "denied by default", d.Reason)
 }
 
+func TestEngine_Evaluate_DefaultActionBlock_FallbackReason(t *testing.T) {
+	eng := NewEngine(ACLConfig{
+		Enabled:       true,
+		DefaultAction: ActionBlock,
+		// No DefaultReason set; a fallback message is used.
+	})
+
+	d := eng.Evaluate(mustSelectors(t, `{app="x"}`), nil)
+	require.True(t, d.Reject)
+	require.Equal(t, "Query rejected by default policy", d.Reason)
+}
+
+func TestEngine_Evaluate_RequireMatcherWarnMode(t *testing.T) {
+	eng := NewEngine(ACLConfig{
+		Enabled: true,
+		Rules: []Rule{{
+			Name:        "require-ns",
+			Action:      ActionRequireMatcher,
+			Enforcement: EnforcementWarn,
+			Reason:      "namespace recommended",
+			When:        []MatchCondition{{Name: "service", Value: "payments"}},
+			Require:     []RequireSpec{{Name: "namespace"}},
+		}},
+	})
+
+	d := eng.Evaluate(mustSelectors(t, `{service="payments"}`), nil)
+	require.False(t, d.Reject)
+	require.Len(t, d.Warnings, 1)
+	require.Equal(t, "require-ns", d.Warnings[0].Rule)
+	require.Contains(t, d.Warnings[0].Message, "namespace")
+	require.Len(t, d.Events, 1)
+	require.Equal(t, outcomeWarned, d.Events[0].Outcome)
+}
+
 func TestEngine_Evaluate_MultiSelectorAllMustPass(t *testing.T) {
 	eng := NewEngine(ACLConfig{
 		Enabled: true,

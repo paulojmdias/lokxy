@@ -20,6 +20,7 @@ func TestParseSelectors(t *testing.T) {
 		{name: "log pipeline", query: `{app="x"} |= "err"`, wantCount: 1},
 		{name: "metric query", query: `rate({app="x"}[5m])`, wantCount: 1},
 		{name: "binary op two groups", query: `rate({app="a"}[5m]) / rate({app="b"}[5m])`, wantCount: 2},
+		{name: "selector-less sample expr", query: `vector(1)`, wantCount: 1},
 		{name: "unparseable", query: `{app=`, wantErr: true},
 	}
 
@@ -50,6 +51,7 @@ func TestSelector_IsEmpty(t *testing.T) {
 		{name: "real matcher", query: `{app="x"}`, empty: false},
 		{name: "mixed real and catch-all", query: `{app=~".*", ns="prod"}`, empty: false},
 		{name: "exotic catch-all not detected", query: `{app=~"[\\s\\S]*"}`, empty: false},
+		{name: "selector-less sample expr is empty", query: `vector(1)`, empty: true},
 	}
 
 	for _, tt := range tests {
