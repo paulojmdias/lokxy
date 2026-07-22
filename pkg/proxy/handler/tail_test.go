@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -163,6 +165,66 @@ func TestHandleTailWebSocket_Integration(t *testing.T) {
 	err = client.ReadJSON(&response)
 
 	require.NoError(t, err)
+}
+
+// Label routing on the tail path: only the group matching the routing label is
+// dialed, and the virtual label is stripped from the forwarded query.
+func TestHandleTailWebSocket_Routing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	logger := log.NewNopLogger()
+
+	mkBackend := func(name string, hits *atomic.Int32, lastQuery *atomic.Value) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			lastQuery.Store(r.URL.Query().Get("query"))
+			up := websocket.Upgrader{CheckOrigin: func(_ *http.Request) bool { return true }}
+			conn, err := up.Upgrade(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			_ = conn.WriteJSON(map[string]any{"backend": name})
+			time.Sleep(100 * time.Millisecond)
+		}))
+	}
+
+	var h1, h2 atomic.Int32
+	var q1, q2 atomic.Value
+	b1 := mkBackend("loki1", &h1, &q1)
+	defer b1.Close()
+	b2 := mkBackend("loki2", &h2, &q2)
+	defer b2.Close()
+
+	config := &cfg.Config{ServerGroups: []cfg.ServerGroup{
+		{Name: "sg1", URL: "ws" + strings.TrimPrefix(b1.URL, "http"), Labels: map[string]string{"__sg__": "loki1"}},
+		{Name: "sg2", URL: "ws" + strings.TrimPrefix(b2.URL, "http"), Labels: map[string]string{"__sg__": "loki2"}},
+	}}
+	for i := range config.ServerGroups {
+		config.ServerGroups[i].HTTPClientConfig.DialTimeout = 5 * time.Second
+	}
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleTailWebSocket(context.Background(), w, r, config, logger)
+	}))
+	defer proxyServer.Close()
+
+	proxyWSURL := "ws" + strings.TrimPrefix(proxyServer.URL, "http") +
+		`/loki/api/v1/tail?query=` + url.QueryEscape(`{__sg__="loki1",app="a"}`)
+	client, _, err := websocket.DefaultDialer.Dial(proxyWSURL, nil)
+	require.NoError(t, err)
+	defer client.Close()
+
+	client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var response map[string]any
+	require.NoError(t, client.ReadJSON(&response))
+	require.Equal(t, "loki1", response["backend"])
+
+	require.Equal(t, int32(1), h1.Load(), "only loki1 should be dialed")
+	require.Equal(t, int32(0), h2.Load(), "loki2 must not be dialed")
+	got, _ := q1.Load().(string)
+	require.Equal(t, `{app="a"}`, got, "routing label stripped from forwarded query")
 }
 
 func TestHandleTailWebSocket_NoBackends(t *testing.T) {

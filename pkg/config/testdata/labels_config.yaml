@@ -1,0 +1,15 @@
+server_groups:
+  - name: loki1
+    url: http://loki1.example.com
+    timeout: 10
+    labels:
+      __sg__: loki1
+      env: prod
+  - name: loki2
+    url: http://loki2.example.com
+    timeout: 15
+    labels:
+      __sg__: loki2
+logging:
+  level: info
+  format: json

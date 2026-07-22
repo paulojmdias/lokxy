@@ -128,6 +128,20 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
+			name:       "labels config",
+			configFile: "testdata/labels_config.yaml",
+			wantErr:    false,
+			validateFunc: func(t *testing.T, cfg *Config) {
+				require.Len(t, cfg.ServerGroups, 2)
+
+				require.Equal(t, "loki1", cfg.ServerGroups[0].Labels["__sg__"])
+				require.Equal(t, "prod", cfg.ServerGroups[0].Labels["env"])
+
+				require.Equal(t, "loki2", cfg.ServerGroups[1].Labels["__sg__"])
+				require.Empty(t, cfg.ServerGroups[1].Labels["env"])
+			},
+		},
+		{
 			name:       "invalid empty config",
 			configFile: "testdata/invalid_empty.yaml",
 			wantErr:    true,
@@ -202,6 +216,19 @@ func TestValidate_MissingURL(t *testing.T) {
 	err := cfg.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "url is required")
+}
+
+func TestValidate_EmptyLabelKey(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{{
+			Name:   "loki1",
+			URL:    "http://localhost:3100",
+			Labels: map[string]string{"": "loki1"},
+		}},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "label key must not be empty")
 }
 
 func TestValidate_MutuallyExclusiveErrorHandling(t *testing.T) {

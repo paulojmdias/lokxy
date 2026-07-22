@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -31,6 +32,7 @@ import (
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
 	"github.com/paulojmdias/lokxy/pkg/proxy/handler"
 	"github.com/paulojmdias/lokxy/pkg/proxy/proxyresponse"
+	"github.com/paulojmdias/lokxy/pkg/routing"
 )
 
 // CustomRoundTripper intercepts the request and response
@@ -385,6 +387,36 @@ func forwardFirstResponse(_ context.Context, w http.ResponseWriter, results <-ch
 	}
 }
 
+// instanceKV returns the structured-logging keyvals identifying a server group:
+// its name plus every configured label flattened as "sg_<key>" fields, so log
+// lines can be filtered by group label. Keys are emitted in sorted order for
+// stable output.
+func instanceKV(sg cfg.ServerGroup) []interface{} {
+	kv := make([]interface{}, 0, 2+2*len(sg.Labels))
+	kv = append(kv, "instance", sg.Name)
+	if len(sg.Labels) > 0 {
+		keys := make([]string, 0, len(sg.Labels))
+		for k := range sg.Labels {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			kv = append(kv, "sg_"+k, sg.Labels[k])
+		}
+	}
+	return kv
+}
+
+// emptyResults returns an already-closed, empty results channel. It lets a
+// transform function produce an empty successful response (optionally carrying
+// warnings) without any upstream request, used when label routing matches no
+// server group or strips a query down to an empty selector.
+func emptyResults() <-chan *proxyresponse.BackendResponse {
+	ch := make(chan *proxyresponse.BackendResponse)
+	close(ch)
+	return ch
+}
+
 func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transformFn) {
 	startTime := time.Now()
 
@@ -408,19 +440,50 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	}
 
+	// Label-based routing. When any server group defines labels, inspect the
+	// query's label matchers: if they reference a routing-label key, restrict
+	// the fan-out to the matching groups and strip those virtual labels from the
+	// forwarded query. Any failure to extract/parse a selector leaves all groups
+	// selected, so routing never breaks existing behavior.
+	groups := st.config.ServerGroups
+	forwardRawQuery := r.URL.RawQuery
+	forwardBody := bodyBytes
+	if routingKeys := routing.RoutingKeys(groups); len(routingKeys) > 0 {
+		if matchers, ok := routing.ExtractMatchers(r, bodyBytes); ok {
+			groups = routing.SelectGroups(groups, matchers, routingKeys)
+			span.SetAttributes(attribute.Int("lokxy.routed_groups", len(groups)))
+			level.Debug(p.logger).Log("msg", "Label routing applied",
+				"matched", len(groups), "total", len(st.config.ServerGroups))
+
+			if len(groups) == 0 {
+				level.Warn(p.logger).Log("msg", "No server group matched routing labels", "query", r.URL.Query().Get("query"))
+				fn(r.Context(), w, emptyResults(), []string{"no server group matched the routing labels in the query"}, p.logger)
+				return
+			}
+
+			var strippedEmpty bool
+			forwardRawQuery, forwardBody, strippedEmpty = routing.StripRequest(r, bodyBytes, routingKeys)
+			if strippedEmpty {
+				level.Warn(p.logger).Log("msg", "Query selects only by routing label", "query", r.URL.Query().Get("query"))
+				fn(r.Context(), w, emptyResults(), []string{"query selects only by routing label; add at least one stream matcher to return results"}, p.logger)
+				return
+			}
+		}
+	}
+
 	// Function to create a fresh reader for each request
 	bodyReader := func() io.ReadCloser {
-		return io.NopCloser(bytes.NewReader(bodyBytes))
+		return io.NopCloser(bytes.NewReader(forwardBody))
 	}
-	results := make(chan *proxyresponse.BackendResponse, len(st.config.ServerGroups))
+	results := make(chan *proxyresponse.BackendResponse, len(groups))
 	// softErrs collects failures from server groups configured with
 	// ignore_error/downgrade_error so they do not fail the overall query.
-	softErrs := make(chan softFailure, len(st.config.ServerGroups))
+	softErrs := make(chan softFailure, len(groups))
 	ctx := r.Context()
 
 	// Forward requests using the custom RoundTripper
 	wg, ctx := errgroup.WithContext(ctx)
-	for _, instance := range st.config.ServerGroups {
+	for _, instance := range groups {
 		wg.Go(func() error {
 			// Classify this server group's error-handling policy. A required
 			// group (the default) fails the whole query on error; an optional
@@ -447,7 +510,7 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 			client, ok := st.clients[instance.Name]
 			if !ok {
 				requestSpan.SetStatus(codes.Error, "Missing HTTP client")
-				level.Error(p.logger).Log("msg", "Missing HTTP client", "instance", instance.Name)
+				level.Error(p.logger).Log(append(instanceKV(instance), "msg", "Missing HTTP client")...)
 				return recordFailure(&proxyresponse.BackendError{
 					Err:         fmt.Errorf("missing HTTP client for instance %s", instance.Name),
 					BackendName: instance.Name,
@@ -456,8 +519,8 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 			}
 
 			targetURL := instance.URL + r.URL.Path
-			if r.URL.RawQuery != "" {
-				targetURL += "?" + r.URL.RawQuery
+			if forwardRawQuery != "" {
+				targetURL += "?" + forwardRawQuery
 			}
 
 			requestSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))
@@ -479,7 +542,7 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))
-				level.Error(p.logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
+				level.Error(p.logger).Log(append(instanceKV(instance), "msg", "Failed to create request", "err", err)...)
 				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,
@@ -512,7 +575,7 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))
-				level.Error(p.logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
+				level.Error(p.logger).Log(append(instanceKV(instance), "msg", "Error querying Loki instance", "err", err)...)
 				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,
@@ -537,11 +600,10 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 			// Check for error response (non-2xx status code)
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-				level.Error(p.logger).Log(
+				level.Error(p.logger).Log(append(instanceKV(instance),
 					"msg", "Backend returned error response",
-					"instance", instance.Name,
 					"status", resp.StatusCode,
-				)
+				)...)
 
 				// drain the body
 				bodyBytes, err := io.ReadAll(resp.Body)
@@ -572,7 +634,7 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))
-				level.Error(p.logger).Log("msg", "Failed to read upstream response body", "instance", instance.Name, "err", err)
+				level.Error(p.logger).Log(append(instanceKV(instance), "msg", "Failed to read upstream response body", "err", err)...)
 				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,

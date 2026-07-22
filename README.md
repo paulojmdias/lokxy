@@ -9,6 +9,7 @@ Lokxy is a powerful log aggregator for Loki, designed to collect and unify log s
 - [How to Run as a Container](#how-to-run-as-a-container)
 - [Play with Lokxy](#play-with-lokxy)
 - [Configuration File](#configuration-file)
+- [Label-based Routing](#label-based-routing)
 - [Reloading Configuration](#reloading-configuration)
 - [Usage](#usage)
 
@@ -114,6 +115,10 @@ server_groups:
     headers:
       Authorization: "Bearer <token>"
       X-Scope-OrgID: org1
+    # Optional labels identify this group for log filtering and label-based
+    # routing — see the "Label-based Routing" section below.
+    labels:
+      __sg__: loki1
 
   - name: "Loki 2"
     url: "http://localhost:3101"
@@ -155,6 +160,7 @@ logging:
     * `url`: The base URL of the Loki instance.
     * `timeout`: Timeout for requests in seconds.
     * `headers`: Custom headers to include in each request, such as authentication tokens.
+    * `labels`: Optional key/value labels that identify this server group. They are added to per-group log lines (flattened as `sg_<key>` fields) and enable [Label-based Routing](#label-based-routing). Default: none.
     * `ignore_error`: When `true`, this server group's response is optional — see [Error Handling and Partial Results](#error-handling-and-partial-results). Default: `false`.
     * `downgrade_error`: When `true`, this server group's errors are surfaced as warnings instead of failing the query — see [Error Handling and Partial Results](#error-handling-and-partial-results). Default: `false`. Mutually exclusive with `ignore_error`.
     * `http_client_config`: HTTP Client custom configurations
@@ -236,6 +242,36 @@ server_groups:
 The application includes tracing instrumentation using OpenTelemetry. To collect traces, deploy an OpenTelemetry Collector or compatible tracing backend such as Jaeger, Grafana Tempo, or Zipkin.
 
 Configure the trace export destination using standard OpenTelemetry environment variables: `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` for the collector endpoint, or `OTEL_EXPORTER_OTLP_ENDPOINT` as a fallback. Set `OTEL_EXPORTER_OTLP_INSECURE=true` for development environments using insecure gRPC connections. If no endpoint is configured, the application defaults to `localhost:4317` as per [otlp exporter documentation](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/). An example of this can also be fund in `mixin/play/`.
+
+## Label-based Routing
+
+By default `lokxy` fans every query out to **all** configured server groups and merges the results. When server groups define `labels`, those labels also act as **routing selectors**: a query whose LogQL selector matches on a label key defined by any group is sent **only** to the groups whose label value satisfies the matcher, instead of to every group.
+
+### How it works
+
+* The set of **routing-label keys** is the union of every `labels` key across all server groups. In the example above, `__sg__` is a routing-label key.
+* When an incoming query's selector references one of those keys, the fan-out is restricted to the groups that match. A group is included when, for every matcher on a routing-label key, `matcher` matches the group's label value. All matcher operators are supported (`=`, `!=`, `=~`, `!~`), and a group that does not define the key is treated as having an empty value (standard Loki semantics).
+* If the query references **none** of the routing-label keys, it is fanned out to **all** groups exactly as before. Existing setups without `labels` are unaffected.
+* Routing labels are **virtual** — they do not exist on the upstream Loki streams — so the routing-label matchers are **stripped** from the query before it is forwarded. Upstream Loki only ever sees the real stream selectors.
+
+Routing applies to all query endpoints (`query`, `query_range`, `series` via `match[]`, `index/stats`, `index/volume`, `patterns`, `detected_labels`, `detected_fields`) and to the streaming `tail` websocket. The query can be supplied either in the URL or in a form-urlencoded `POST` body (as Grafana sends `query_range`).
+
+### Example
+
+Given the configuration above (`Loki 1` labelled `__sg__: loki1`, `Loki 2` labelled `__sg__: loki2`):
+
+| Query | Routed to | Forwarded selector |
+| --- | --- | --- |
+| `{__sg__="loki1", app="api"}` | Loki 1 only | `{app="api"}` |
+| `{__sg__=~"loki.*", app="api"}` | Loki 1 and Loki 2 | `{app="api"}` |
+| `{app="api"}` | all groups (default) | `{app="api"}` (unchanged) |
+
+### Edge cases
+
+Both of the following return an empty but successful response with an explanatory entry on the native Loki `warnings[]` field (so Grafana can display it), and no upstream is queried:
+
+* **No group matches** the routing selector (e.g. `{__sg__="does-not-exist"}`).
+* **The query selects only by routing label** (e.g. `{__sg__="loki1"}` on its own). Stripping the virtual label would leave an invalid empty `{}` selector, so add at least one real stream matcher (e.g. `{__sg__="loki1", app="api"}`) to return results.
 
 ## Reloading Configuration
 

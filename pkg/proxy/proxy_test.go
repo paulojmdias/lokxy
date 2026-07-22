@@ -1065,3 +1065,224 @@ func TestMetricPathLabel_UsesRoutePattern(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/label/{name}/values", found,
 		"path metric label must be the route template, not the resolved URL")
 }
+
+// ---------- label-based routing ----------
+
+func TestInstanceKV(t *testing.T) {
+	// No labels: only the instance name.
+	kv := instanceKV(cfg.ServerGroup{Name: "sg1"})
+	require.Equal(t, []interface{}{"instance", "sg1"}, kv)
+
+	// With labels: flattened as sg_<key> in sorted key order.
+	kv = instanceKV(cfg.ServerGroup{
+		Name:   "sg1",
+		Labels: map[string]string{"__sg__": "loki1", "env": "prod"},
+	})
+	require.Equal(t, []interface{}{
+		"instance", "sg1",
+		"sg___sg__", "loki1",
+		"sg_env", "prod",
+	}, kv)
+}
+
+// mkLabeledUpstream builds an upstream that records how many times it was hit
+// and the raw query string it last received on /loki/api/v1/query_range.
+func mkLabeledUpstream(t *testing.T, hits *atomic.Int32, lastQuery *atomic.Value) *httptest.Server {
+	t.Helper()
+	return mkUpstreamServer(t, map[string]http.HandlerFunc{
+		"/loki/api/v1/query_range": func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			lastQuery.Store(r.URL.Query().Get("query"))
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, streamResultBody)
+		},
+	})
+}
+
+// A routing label matcher restricts the fan-out to the matching group and the
+// virtual label is stripped from the forwarded query.
+func TestProxy_Routing_SelectsSingleGroupAndStrips(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var h1, h2 atomic.Int32
+	var q1, q2 atomic.Value
+	s1 := mkLabeledUpstream(t, &h1, &q1)
+	defer s1.Close()
+	s2 := mkLabeledUpstream(t, &h2, &q2)
+	defer s2.Close()
+
+	config := mkConfig(s1.URL, s2.URL)
+	config.ServerGroups[0].Labels = map[string]string{"__sg__": "loki1"}
+	config.ServerGroups[1].Labels = map[string]string{"__sg__": "loki2"}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		`/loki/api/v1/query_range?query=`+url.QueryEscape(`{__sg__="loki1",app="a"}`), nil)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, int32(1), h1.Load(), "only loki1 should be queried")
+	require.Equal(t, int32(0), h2.Load(), "loki2 must not be queried")
+
+	// __sg__ is stripped from the forwarded query; the real matcher remains.
+	got, _ := q1.Load().(string)
+	require.Equal(t, `{app="a"}`, got)
+	require.Contains(t, rr.Body.String(), "hello")
+}
+
+// A regex routing matcher can select multiple groups; both are queried.
+func TestProxy_Routing_RegexSelectsMultiple(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var h1, h2 atomic.Int32
+	var q1, q2 atomic.Value
+	s1 := mkLabeledUpstream(t, &h1, &q1)
+	defer s1.Close()
+	s2 := mkLabeledUpstream(t, &h2, &q2)
+	defer s2.Close()
+
+	config := mkConfig(s1.URL, s2.URL)
+	config.ServerGroups[0].Labels = map[string]string{"__sg__": "loki1"}
+	config.ServerGroups[1].Labels = map[string]string{"__sg__": "loki2"}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		`/loki/api/v1/query_range?query=`+url.QueryEscape(`{__sg__=~"loki.*",app="a"}`), nil)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, int32(1), h1.Load())
+	require.Equal(t, int32(1), h2.Load())
+}
+
+// A query with no routing label fans out to all groups (unchanged behavior),
+// and the query is forwarded verbatim.
+func TestProxy_Routing_NoRoutingLabel_FansOutAll(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var h1, h2 atomic.Int32
+	var q1, q2 atomic.Value
+	s1 := mkLabeledUpstream(t, &h1, &q1)
+	defer s1.Close()
+	s2 := mkLabeledUpstream(t, &h2, &q2)
+	defer s2.Close()
+
+	config := mkConfig(s1.URL, s2.URL)
+	config.ServerGroups[0].Labels = map[string]string{"__sg__": "loki1"}
+	config.ServerGroups[1].Labels = map[string]string{"__sg__": "loki2"}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		`/loki/api/v1/query_range?query=`+url.QueryEscape(`{app="a"}`), nil)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, int32(1), h1.Load())
+	require.Equal(t, int32(1), h2.Load())
+	got, _ := q1.Load().(string)
+	require.Equal(t, `{app="a"}`, got, "query forwarded unchanged")
+}
+
+// No group matches the routing selector: empty success + warning, no upstream hit.
+func TestProxy_Routing_NoMatch_EmptySuccessWithWarning(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var h1, h2 atomic.Int32
+	var q1, q2 atomic.Value
+	s1 := mkLabeledUpstream(t, &h1, &q1)
+	defer s1.Close()
+	s2 := mkLabeledUpstream(t, &h2, &q2)
+	defer s2.Close()
+
+	config := mkConfig(s1.URL, s2.URL)
+	config.ServerGroups[0].Labels = map[string]string{"__sg__": "loki1"}
+	config.ServerGroups[1].Labels = map[string]string{"__sg__": "loki2"}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		`/loki/api/v1/query_range?query=`+url.QueryEscape(`{__sg__="nope",app="a"}`), nil)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, int32(0), h1.Load())
+	require.Equal(t, int32(0), h2.Load())
+	body := rr.Body.String()
+	require.Contains(t, body, "success")
+	require.Contains(t, body, "warnings")
+	require.Contains(t, body, "no server group matched")
+}
+
+// A query that selects ONLY by routing label strips to an empty selector:
+// empty success + explanatory warning, no upstream hit.
+func TestProxy_Routing_OnlyRoutingLabel_EmptySelectorWarning(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var h1, h2 atomic.Int32
+	var q1, q2 atomic.Value
+	s1 := mkLabeledUpstream(t, &h1, &q1)
+	defer s1.Close()
+	s2 := mkLabeledUpstream(t, &h2, &q2)
+	defer s2.Close()
+
+	config := mkConfig(s1.URL, s2.URL)
+	config.ServerGroups[0].Labels = map[string]string{"__sg__": "loki1"}
+	config.ServerGroups[1].Labels = map[string]string{"__sg__": "loki2"}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		`/loki/api/v1/query_range?query=`+url.QueryEscape(`{__sg__="loki1"}`), nil)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, int32(0), h1.Load(), "no upstream hit when selector strips to empty")
+	body := rr.Body.String()
+	require.Contains(t, body, "warnings")
+	require.Contains(t, body, "selects only by routing label")
+}
+
+// Routing also applies to a POST query_range with the query in the form body:
+// the group is selected and the stripped query is forwarded in the body.
+func TestProxy_Routing_POSTBody_SelectsAndStrips(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	var h1, h2 atomic.Int32
+	var b1 atomic.Value
+	up := "/loki/api/v1/query_range"
+	s1 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		up: func(w http.ResponseWriter, r *http.Request) {
+			h1.Add(1)
+			body, _ := io.ReadAll(r.Body)
+			b1.Store(string(body))
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, streamResultBody)
+		},
+	})
+	defer s1.Close()
+	s2 := mkUpstreamServer(t, map[string]http.HandlerFunc{
+		up: func(w http.ResponseWriter, _ *http.Request) {
+			h2.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, streamResultBody)
+		},
+	})
+	defer s2.Close()
+
+	config := mkConfig(s1.URL, s2.URL)
+	config.ServerGroups[0].Labels = map[string]string{"__sg__": "loki1"}
+	config.ServerGroups[1].Labels = map[string]string{"__sg__": "loki2"}
+
+	rr := httptest.NewRecorder()
+	body := bytes.NewBufferString(`query=` + url.QueryEscape(`{__sg__="loki1",app="a"}`))
+	req := httptest.NewRequest(http.MethodPost, up, body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	mustMux(t, logger, config).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, int32(1), h1.Load())
+	require.Equal(t, int32(0), h2.Load())
+
+	forwarded, _ := b1.Load().(string)
+	vals, err := url.ParseQuery(forwarded)
+	require.NoError(t, err)
+	require.Equal(t, `{app="a"}`, vals.Get("query"))
+}

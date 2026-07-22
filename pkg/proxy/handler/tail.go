@@ -21,6 +21,7 @@ import (
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
+	"github.com/paulojmdias/lokxy/pkg/routing"
 )
 
 // WebSocket upgrader to upgrade the HTTP connection to a WebSocket connection
@@ -97,8 +98,31 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 	var connectedBackend int
 	var backendMutex sync.Mutex
 
+	// Label-based routing: restrict the fan-out to server groups whose labels
+	// satisfy the query's routing-label matchers, and strip those virtual labels
+	// from the forwarded query. Any extraction/parse failure keeps all groups.
+	groups := config.ServerGroups
+	forwardRawQuery := r.URL.RawQuery
+	if routingKeys := routing.RoutingKeys(groups); len(routingKeys) > 0 {
+		if matchers, ok := routing.ExtractMatchers(r, nil); ok {
+			groups = routing.SelectGroups(groups, matchers, routingKeys)
+			span.SetAttributes(attribute.Int("lokxy.routed_groups", len(groups)))
+			if strippedQuery, _, empty := routing.StripRequest(r, nil, routingKeys); empty {
+				level.Warn(logger).Log("msg", "Tail query selects only by routing label; no streams will be tailed",
+					"query", r.URL.Query().Get("query"))
+				groups = nil
+			} else {
+				forwardRawQuery = strippedQuery
+			}
+			if len(groups) == 0 {
+				level.Warn(logger).Log("msg", "No server group matched routing labels for tail",
+					"query", r.URL.Query().Get("query"))
+			}
+		}
+	}
+
 	// Loop through each Loki instance and create WebSocket connections
-	for _, instance := range config.ServerGroups {
+	for _, instance := range groups {
 		wg.Add(1)
 
 		go func(instance cfg.ServerGroup) {
@@ -121,8 +145,8 @@ func HandleTailWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Req
 			}
 
 			targetURL += r.URL.Path
-			if r.URL.RawQuery != "" {
-				targetURL += "?" + r.URL.RawQuery
+			if forwardRawQuery != "" {
+				targetURL += "?" + forwardRawQuery
 			}
 
 			backendSpan.SetAttributes(attribute.String("upstream.target_url", targetURL))

@@ -54,6 +54,14 @@ type ServerGroup struct {
 	// of failing the query. IgnoreError and DowngradeError are mutually
 	// exclusive; setting both on the same server group is a configuration error.
 	DowngradeError bool `yaml:"downgrade_error"`
+
+	// Labels identify this server group for label-based routing and per-group
+	// log filtering, e.g. {__sg__: loki1}. Every key used here becomes a
+	// "routing-label key": a query whose LogQL selector matches on such a key
+	// restricts the fan-out to only the groups whose label value satisfies the
+	// matcher, instead of querying every group. Labels are optional and the key
+	// sets need not be identical across groups.
+	Labels map[string]string `yaml:"labels"`
 }
 
 // LoggerConfig contains the logger configuration details.
@@ -104,6 +112,11 @@ func (c *Config) Validate() error {
 		}
 		if sg.IgnoreError && sg.DowngradeError {
 			return fmt.Errorf("server_groups[%d]: ignore_error and downgrade_error are mutually exclusive", i)
+		}
+		for k := range sg.Labels {
+			if k == "" {
+				return fmt.Errorf("server_groups[%d]: label key must not be empty", i)
+			}
 		}
 	}
 
