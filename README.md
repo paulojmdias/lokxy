@@ -231,6 +231,72 @@ server_groups:
     downgrade_error: true  # Optional: failures become warnings on the response.
 ```
 
+### Query ACLs
+
+Lokxy fans every query out to every backend, so a single broad query such as
+`{app=~".*"}` becomes N times as expensive through the proxy. The optional query
+ACL engine inspects the LogQL of each query **before** fan-out and can block it or
+warn about it based on operator-defined structural rules. It is a guardrail for
+well-scoped, efficient queries — not an authentication layer (identity is expected
+to be provided by an upstream identity-aware proxy via request headers).
+
+ACL rules live under a top-level `acl:` key. Rules are evaluated in declaration
+order. This is **Phase 1**, which supports two actions:
+
+* `block` — reject the query.
+* `require_matcher` — reject unless the query carries the required label matchers.
+  Every missing label is reported in a single error response.
+
+Conditions in a rule's `when` block are ANDed together. A condition can match a
+label in the stream selector (`source: query`, the default), an HTTP header
+(`source: header`), or a query with no meaningful selector (`empty_selector: true`,
+which covers `{}` and catch-all patterns such as `=~".*"`, `=~".+"`, `!=""`).
+
+Each rule has an `enforcement` level: `enforce` (default) rejects with HTTP 400 and
+Loki's JSON error format so Grafana surfaces it inline, while `warn` forwards the
+query, adds an `X-Lokxy-Policy-Warning` response header, and logs — useful for
+observing a rule's impact before enforcing it. Every decision is counted in the
+`lokxy_acl_decisions_total` metric (labeled by rule, action, enforcement, and
+outcome).
+
+Only endpoints that carry a LogQL expression are evaluated (`/query`,
+`/query_range`, `/tail`, `/series`, `/index/stats`). Metadata and discovery
+endpoints used by Grafana Logs Drilldown (`/labels`, `/index/volume`, `/patterns`,
+`/detected_labels`, `/detected_fields`, …) pass through untouched. ACL rules
+participate in [configuration reloads](#reloading-configuration), so they can be
+changed without restarting the proxy.
+
+```yaml
+acl:
+  enabled: true
+  default_action: allow   # allow | block — applies when no rule matches
+
+  rules:
+    # Reject queries with no real stream selector.
+    - name: block-empty-selector
+      action: block
+      enforcement: enforce
+      reason: "Queries must include at least one stream selector"
+      when:
+        - empty_selector: true
+
+    # Payments queries must also scope by namespace.
+    - name: require-namespace-for-payments
+      action: require_matcher
+      enforcement: enforce
+      reason: "Queries targeting payments must also specify namespace"
+      when:
+        - name: service
+          value: payments
+          types: ["=", "=~"]
+      require:
+        - name: namespace
+          types: ["=", "=~"]
+```
+
+> The `allow` and `inject_matcher` actions are accepted and validated in
+> configuration but are reserved for a later phase; they are not yet enforced.
+
 ### Tracing Configuration
 
 The application includes tracing instrumentation using OpenTelemetry. To collect traces, deploy an OpenTelemetry Collector or compatible tracing backend such as Jaeger, Grafana Tempo, or Zipkin.

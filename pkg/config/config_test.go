@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/paulojmdias/lokxy/pkg/acl"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -147,6 +149,24 @@ func TestLoadConfig(t *testing.T) {
 			configFile: "testdata/does_not_exist.yaml",
 			wantErr:    true,
 		},
+		{
+			name:       "valid acl config",
+			configFile: "testdata/acl_config.yaml",
+			wantErr:    false,
+			validateFunc: func(t *testing.T, cfg *Config) {
+				require.True(t, cfg.ACL.Enabled)
+				require.Len(t, cfg.ACL.Rules, 2)
+				require.Equal(t, "block-empty-selector", cfg.ACL.Rules[0].Name)
+				require.Equal(t, acl.ActionBlock, cfg.ACL.Rules[0].Action)
+				require.Equal(t, acl.ActionRequireMatcher, cfg.ACL.Rules[1].Action)
+				require.Equal(t, "namespace", cfg.ACL.Rules[1].Require[0].Name)
+			},
+		},
+		{
+			name:       "invalid acl config",
+			configFile: "testdata/invalid_acl.yaml",
+			wantErr:    true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -216,4 +236,17 @@ func TestValidate_MutuallyExclusiveErrorHandling(t *testing.T) {
 	err := cfg.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mutually exclusive")
+}
+
+func TestValidate_InvalidACL(t *testing.T) {
+	cfg := &Config{
+		ServerGroups: []ServerGroup{{Name: "loki1", URL: "http://localhost:3100"}},
+		ACL: acl.ACLConfig{
+			Enabled: true,
+			Rules:   []acl.Rule{{Name: "r", Action: "bogus"}},
+		},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown action")
 }

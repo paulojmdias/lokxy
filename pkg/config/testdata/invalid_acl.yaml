@@ -1,0 +1,11 @@
+server_groups:
+  - name: loki1
+    url: http://loki1.example.com
+logging:
+  level: info
+  format: json
+acl:
+  enabled: true
+  rules:
+    - name: bad-rule
+      action: not_a_real_action

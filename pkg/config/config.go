@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v2"
+
+	"github.com/paulojmdias/lokxy/pkg/acl"
 )
 
 var isReady atomic.Bool
@@ -66,6 +68,7 @@ type LoggerConfig struct {
 type Config struct {
 	ServerGroups []ServerGroup `yaml:"server_groups"`
 	Logging      LoggerConfig  `yaml:"logging"`
+	ACL          acl.ACLConfig `yaml:"acl"`
 }
 
 // LoadConfig loads and parses the YAML configuration file
@@ -105,6 +108,10 @@ func (c *Config) Validate() error {
 		if sg.IgnoreError && sg.DowngradeError {
 			return fmt.Errorf("server_groups[%d]: ignore_error and downgrade_error are mutually exclusive", i)
 		}
+	}
+
+	if err := c.ACL.Validate(); err != nil {
+		return err
 	}
 
 	return nil

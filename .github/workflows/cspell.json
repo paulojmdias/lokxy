@@ -2,8 +2,10 @@
   "version": "0.2",
   "language": "en",
   "words": [
+    "acl",
     "alives",
     "artifacthub",
+    "Drilldown",
     "fanout",
     "fsnotify",
     "Barroso",
@@ -17,6 +19,7 @@
     "inotify",
     "kubelet",
     "kvstore",
+    "logql",
     "loki",
     "Lokxy",
     "lokxy",

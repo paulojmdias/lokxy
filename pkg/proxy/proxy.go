@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/paulojmdias/lokxy/pkg/acl"
 	cfg "github.com/paulojmdias/lokxy/pkg/config"
 	"github.com/paulojmdias/lokxy/pkg/o11y/metrics"
 	traces "github.com/paulojmdias/lokxy/pkg/o11y/tracing"
@@ -202,6 +203,7 @@ type (
 	proxyState struct {
 		config  *cfg.Config
 		clients map[string]*http.Client
+		acl     *acl.Engine
 	}
 
 	transformFn func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, []string, log.Logger)
@@ -251,7 +253,15 @@ func buildState(config *cfg.Config, logger log.Logger) (*proxyState, error) {
 		}
 		clients[instance.Name] = client
 	}
-	return &proxyState{config: config, clients: clients}, nil
+	return &proxyState{config: config, clients: clients, acl: acl.NewEngine(config.ACL)}, nil
+}
+
+// ACLEngine returns the ACL engine from the current configuration snapshot. It
+// returns nil when ACL is disabled. Reading it from the atomically swapped
+// state is what lets ACL rules take effect on configuration reload without a
+// restart.
+func (p *Proxy) ACLEngine() *acl.Engine {
+	return p.state.Load().acl
 }
 
 // Handler returns the proxy's request handler. The routes are fixed; the

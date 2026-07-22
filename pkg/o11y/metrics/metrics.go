@@ -41,6 +41,11 @@ var (
 	// ConfigReloadSuccessTime holds the Unix timestamp of the last successful
 	// configuration load or reload.
 	ConfigReloadSuccessTime metric.Float64Gauge = noop.Float64Gauge{}
+
+	// ACLDecisions counts query ACL policy decisions. It is incremented once per
+	// rule that fires, labeled by the rule name, action, enforcement level, and
+	// outcome (blocked or warned).
+	ACLDecisions metric.Int64Counter = noop.Int64Counter{}
 )
 
 // RecordConfigReload records the outcome of a configuration load or reload
@@ -148,6 +153,13 @@ func createMetrics() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create ConfigReloadSuccessTime metric: %w", err)
+	}
+
+	ACLDecisions, err = meter.Int64Counter("lokxy_acl_decisions_total",
+		metric.WithDescription("Total number of query ACL policy decisions by rule, action, enforcement, and outcome"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create ACLDecisions metric: %w", err)
 	}
 	return nil
 }

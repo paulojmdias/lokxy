@@ -1,0 +1,28 @@
+server_groups:
+  - name: loki1
+    url: http://loki1.example.com
+    timeout: 10
+logging:
+  level: info
+  format: json
+acl:
+  enabled: true
+  default_action: allow
+  rules:
+    - name: block-empty-selector
+      action: block
+      enforcement: enforce
+      reason: "Queries must include at least one stream selector"
+      when:
+        - empty_selector: true
+    - name: require-namespace-for-payments
+      action: require_matcher
+      enforcement: enforce
+      reason: "payments queries must specify namespace"
+      when:
+        - name: service
+          value: payments
+          types: ["=", "=~"]
+      require:
+        - name: namespace
+          types: ["=", "=~"]

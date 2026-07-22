@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/paulojmdias/lokxy/pkg/acl"
 	"github.com/paulojmdias/lokxy/pkg/config"
 )
 
@@ -63,7 +64,14 @@ func NewServeMux(logger log.Logger, p *Proxy, reload func() error, enableLifecyc
 		}
 	})
 
-	// Register the proxy handler for all other requests
-	proxyMux.HandleFunc("/", p.Handler())
+	// Register the proxy handler for all other requests, wrapped with the query
+	// ACL middleware. The middleware reads the active engine from the proxy's
+	// current configuration snapshot per request (via p.ACLEngine), so enabling,
+	// disabling, or changing ACL rules takes effect on reload without a restart.
+	// It must wrap the whole proxy handler (not fanoutRequest) so that the
+	// WebSocket tail endpoint, which bypasses fan-out, is still covered.
+	var proxyHandler http.Handler = http.HandlerFunc(p.Handler())
+	proxyHandler = acl.Middleware(p.ACLEngine, logger)(proxyHandler)
+	proxyMux.Handle("/", proxyHandler)
 	return proxyMux
 }
