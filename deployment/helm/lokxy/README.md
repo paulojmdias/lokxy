@@ -17,7 +17,7 @@ You can then run `helm search repo lokxy` to see the charts.
 
 ## Version
 
-![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.8.1](https://img.shields.io/badge/AppVersion-v0.8.1-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.9.0](https://img.shields.io/badge/AppVersion-v0.9.0-informational?style=flat-square)
 
 Lokxy is a powerful log aggregator for Loki
 
@@ -66,7 +66,7 @@ Kubernetes: `>=1.23.0-0`
 | horizontalPodAutoscaler.minReplicas | int | `2` | Minimum number of pods to scale down to |
 | horizontalPodAutoscaler.targetCPUUtilizationPercentage | int | `75` | Target average CPU utilization percentage across pods |
 | horizontalPodAutoscaler.targetMemoryUtilizationPercentage | string | `nil` | Target average memory utilization percentage across pods (optional) |
-| image | object | `{"pullPolicy":"IfNotPresent","repository":"lokxy/lokxy","tag":"v0.8.1"}` | Docker image configuration |
+| image | object | `{"pullPolicy":"IfNotPresent","repository":"lokxy/lokxy","tag":"v0.9.0"}` | Docker image configuration |
 | ingress | object | `{"annotations":{},"className":"","enabled":false,"hosts":[{"host":"lokxy.local","paths":[{"path":"/","pathType":"ImplementationSpecific"}]}],"labels":{},"tls":[]}` | Ingress configuration for exposing Lokxy externally over HTTP/S |
 | ingress.annotations | object | `{}` | Annotations to add to the Ingress resource (e.g., cert-manager, NGINX settings) |
 | ingress.className | string | `""` | Ingress class name (e.g., nginx, traefik) |
