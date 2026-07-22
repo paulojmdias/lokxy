@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
@@ -32,7 +33,26 @@ var (
 	// query because the server group was configured with ignore_error or
 	// downgrade_error. The "outcome" attribute distinguishes the two.
 	RequestDegraded metric.Int64Counter = noop.Int64Counter{}
+
+	// ConfigReloadSuccessful reports whether the last configuration load or
+	// reload attempt succeeded (1) or failed (0).
+	ConfigReloadSuccessful metric.Int64Gauge = noop.Int64Gauge{}
+
+	// ConfigReloadSuccessTime holds the Unix timestamp of the last successful
+	// configuration load or reload.
+	ConfigReloadSuccessTime metric.Float64Gauge = noop.Float64Gauge{}
 )
+
+// RecordConfigReload records the outcome of a configuration load or reload
+// attempt on the config reload gauges.
+func RecordConfigReload(ctx context.Context, success bool) {
+	if success {
+		ConfigReloadSuccessful.Record(ctx, 1)
+		ConfigReloadSuccessTime.Record(ctx, float64(time.Now().UnixNano())/1e9)
+	} else {
+		ConfigReloadSuccessful.Record(ctx, 0)
+	}
+}
 
 // Initialize prepares the OpenTelemetry metric pipeline for the service.
 // It configures a Prometheus exporter, sets up a [sdkmetric.MeterProvider] with the
@@ -113,6 +133,21 @@ func createMetrics() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create RequestDegraded metric: %w", err)
+	}
+
+	ConfigReloadSuccessful, err = meter.Int64Gauge("lokxy_config_last_reload_successful",
+		metric.WithDescription("Whether the last configuration reload attempt was successful"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create ConfigReloadSuccessful metric: %w", err)
+	}
+
+	ConfigReloadSuccessTime, err = meter.Float64Gauge("lokxy_config_last_reload_success_timestamp_seconds",
+		metric.WithDescription("Timestamp of the last successful configuration reload"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create ConfigReloadSuccessTime metric: %w", err)
 	}
 	return nil
 }

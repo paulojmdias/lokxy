@@ -72,13 +72,31 @@ deployment:
 # -- Docker image configuration
 image:
   repository: lokxy/lokxy
-  tag: v0.8.1
+  tag: v0.9.0
   pullPolicy: IfNotPresent
 
 # -- Container ports used by Lokxy
 ports:
   service: 3100
   metrics: 3101
+
+# -- Lifecycle API configuration
+lifecycle:
+  # -- Enable the /-/reload HTTP endpoint (--enable-lifecycle) to reload the
+  # configuration without restarting the pods
+  enabled: false
+
+# -- Automatic configuration reload
+configWatch:
+  # -- Watch the mounted configuration file and reload it automatically when
+  # it changes (--config.watch). Works with ConfigMap/Secret updates, which
+  # the kubelet propagates to the volume without restarting the pod.
+  enabled: false
+
+# -- Roll the pods when the configuration changes (checksum/config pod
+# annotation). Set to false when relying on hot reload (configWatch or the
+# lifecycle endpoint) so config changes no longer trigger a rolling restart.
+rollOnConfigChange: true
 
 # -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
 # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use environment variables in the configuration.

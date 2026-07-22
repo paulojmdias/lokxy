@@ -62,7 +62,7 @@ func benchmarkFanOut(b *testing.B, n int, path, respBody string) {
 		urls[i] = srv.URL
 	}
 
-	mux := NewServeMux(logger, mkConfig(urls...))
+	mux := mustMux(b, logger, mkConfig(urls...))
 
 	b.ResetTimer()
 	b.ReportAllocs()
