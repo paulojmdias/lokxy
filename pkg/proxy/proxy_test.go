@@ -1068,23 +1068,6 @@ func TestMetricPathLabel_UsesRoutePattern(t *testing.T) {
 
 // ---------- label-based routing ----------
 
-func TestInstanceKV(t *testing.T) {
-	// No labels: only the instance name.
-	kv := instanceKV(cfg.ServerGroup{Name: "sg1"})
-	require.Equal(t, []interface{}{"instance", "sg1"}, kv)
-
-	// With labels: flattened as sg_<key> in sorted key order.
-	kv = instanceKV(cfg.ServerGroup{
-		Name:   "sg1",
-		Labels: map[string]string{"__sg__": "loki1", "env": "prod"},
-	})
-	require.Equal(t, []interface{}{
-		"instance", "sg1",
-		"sg___sg__", "loki1",
-		"sg_env", "prod",
-	}, kv)
-}
-
 // mkLabeledUpstream builds an upstream that records how many times it was hit
 // and the raw query string it last received on /loki/api/v1/query_range.
 func mkLabeledUpstream(t *testing.T, hits *atomic.Int32, lastQuery *atomic.Value) *httptest.Server {

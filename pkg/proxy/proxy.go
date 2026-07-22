@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -387,26 +386,6 @@ func forwardFirstResponse(_ context.Context, w http.ResponseWriter, results <-ch
 	}
 }
 
-// instanceKV returns the structured-logging keyvals identifying a server group:
-// its name plus every configured label flattened as "sg_<key>" fields, so log
-// lines can be filtered by group label. Keys are emitted in sorted order for
-// stable output.
-func instanceKV(sg cfg.ServerGroup) []interface{} {
-	kv := make([]interface{}, 0, 2+2*len(sg.Labels))
-	kv = append(kv, "instance", sg.Name)
-	if len(sg.Labels) > 0 {
-		keys := make([]string, 0, len(sg.Labels))
-		for k := range sg.Labels {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			kv = append(kv, "sg_"+k, sg.Labels[k])
-		}
-	}
-	return kv
-}
-
 // emptyResults returns an already-closed, empty results channel. It lets a
 // transform function produce an empty successful response (optionally carrying
 // warnings) without any upstream request, used when label routing matches no
@@ -510,7 +489,7 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 			client, ok := st.clients[instance.Name]
 			if !ok {
 				requestSpan.SetStatus(codes.Error, "Missing HTTP client")
-				level.Error(p.logger).Log(append(instanceKV(instance), "msg", "Missing HTTP client")...)
+				level.Error(p.logger).Log("msg", "Missing HTTP client", "instance", instance.Name)
 				return recordFailure(&proxyresponse.BackendError{
 					Err:         fmt.Errorf("missing HTTP client for instance %s", instance.Name),
 					BackendName: instance.Name,
@@ -542,7 +521,7 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))
-				level.Error(p.logger).Log(append(instanceKV(instance), "msg", "Failed to create request", "err", err)...)
+				level.Error(p.logger).Log("msg", "Failed to create request", "instance", instance.Name, "err", err)
 				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,
@@ -575,7 +554,7 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))
-				level.Error(p.logger).Log(append(instanceKV(instance), "msg", "Error querying Loki instance", "err", err)...)
+				level.Error(p.logger).Log("msg", "Error querying Loki instance", "instance", instance.Name, "err", err)
 				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,
@@ -600,10 +579,11 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 			// Check for error response (non-2xx status code)
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-				level.Error(p.logger).Log(append(instanceKV(instance),
+				level.Error(p.logger).Log(
 					"msg", "Backend returned error response",
+					"instance", instance.Name,
 					"status", resp.StatusCode,
-				)...)
+				)
 
 				// drain the body
 				bodyBytes, err := io.ReadAll(resp.Body)
@@ -634,7 +614,7 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 					attribute.String("method", r.Method),
 					attribute.String("server_group", instance.Name),
 				))
-				level.Error(p.logger).Log(append(instanceKV(instance), "msg", "Failed to read upstream response body", "err", err)...)
+				level.Error(p.logger).Log("msg", "Failed to read upstream response body", "instance", instance.Name, "err", err)
 				return recordFailure(&proxyresponse.BackendError{
 					Err:         err,
 					BackendName: instance.Name,

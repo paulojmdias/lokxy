@@ -160,7 +160,7 @@ logging:
     * `url`: The base URL of the Loki instance.
     * `timeout`: Timeout for requests in seconds.
     * `headers`: Custom headers to include in each request, such as authentication tokens.
-    * `labels`: Optional key/value labels that identify this server group. They are added to per-group log lines (flattened as `sg_<key>` fields) and enable [Label-based Routing](#label-based-routing). Default: none.
+    * `labels`: Optional key/value labels that identify this server group and enable [Label-based Routing](#label-based-routing). Default: none.
     * `ignore_error`: When `true`, this server group's response is optional — see [Error Handling and Partial Results](#error-handling-and-partial-results). Default: `false`.
     * `downgrade_error`: When `true`, this server group's errors are surfaced as warnings instead of failing the query — see [Error Handling and Partial Results](#error-handling-and-partial-results). Default: `false`. Mutually exclusive with `ignore_error`.
     * `http_client_config`: HTTP Client custom configurations
