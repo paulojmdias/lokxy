@@ -17,7 +17,7 @@ You can then run `helm search repo lokxy` to see the charts.
 
 ## Version
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.7.0](https://img.shields.io/badge/AppVersion-v0.7.0-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.8.1](https://img.shields.io/badge/AppVersion-v0.8.1-informational?style=flat-square)
 
 Lokxy is a powerful log aggregator for Loki
 
@@ -38,6 +38,8 @@ Kubernetes: `>=1.23.0-0`
 |-----|------|---------|-------------|
 | config | string | `"server_groups:\n  - name: \"Loki 1\"\n    url: \"http://localhost:3100\"\n    timeout: 30\nlogging:\n  level: \"info\"\n  format: \"json\"\n"` | Raw lokxy.yaml config rendered into the ConfigMap or Secret (depending on configStorageType) |
 | configStorageType | string | `"ConfigMap"` | Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use environment variables in the configuration. Such environment variables can be then stored in a separate Secret and injected via the deployment.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables). |
+| configWatch | object | `{"enabled":false}` | Automatic configuration reload |
+| configWatch.enabled | bool | `false` | Watch the mounted configuration file and reload it automatically when it changes (--config.watch). Works with ConfigMap/Secret updates, which the kubelet propagates to the volume without restarting the pod. |
 | deployment.annotations | object | `{}` | Custom deployment annotations |
 | deployment.command | list | `["/usr/local/bin/lokxy"]` | Command to run in the container |
 | deployment.env | list | `[]` | Environment variables for the container |
@@ -64,7 +66,7 @@ Kubernetes: `>=1.23.0-0`
 | horizontalPodAutoscaler.minReplicas | int | `2` | Minimum number of pods to scale down to |
 | horizontalPodAutoscaler.targetCPUUtilizationPercentage | int | `75` | Target average CPU utilization percentage across pods |
 | horizontalPodAutoscaler.targetMemoryUtilizationPercentage | string | `nil` | Target average memory utilization percentage across pods (optional) |
-| image | object | `{"pullPolicy":"IfNotPresent","repository":"lokxy/lokxy","tag":"v0.4.0"}` | Docker image configuration |
+| image | object | `{"pullPolicy":"IfNotPresent","repository":"lokxy/lokxy","tag":"v0.8.1"}` | Docker image configuration |
 | ingress | object | `{"annotations":{},"className":"","enabled":false,"hosts":[{"host":"lokxy.local","paths":[{"path":"/","pathType":"ImplementationSpecific"}]}],"labels":{},"tls":[]}` | Ingress configuration for exposing Lokxy externally over HTTP/S |
 | ingress.annotations | object | `{}` | Annotations to add to the Ingress resource (e.g., cert-manager, NGINX settings) |
 | ingress.className | string | `""` | Ingress class name (e.g., nginx, traefik) |
@@ -72,6 +74,8 @@ Kubernetes: `>=1.23.0-0`
 | ingress.hosts | list | `[{"host":"lokxy.local","paths":[{"path":"/","pathType":"ImplementationSpecific"}]}]` | Host rules for the Ingress resource |
 | ingress.labels | object | `{}` | Custom Ingress labels |
 | ingress.tls | list | `[]` | TLS configuration for secure HTTPS access Example: tls:   - secretName: lokxy-tls     hosts:       - lokxy.example.com |
+| lifecycle | object | `{"enabled":false}` | Lifecycle API configuration |
+| lifecycle.enabled | bool | `false` | Enable the /-/reload HTTP endpoint (--enable-lifecycle) to reload the configuration without restarting the pods |
 | podDisruptionBudget | object | `{"annotations":{},"enabled":true,"labels":{},"maxUnavailable":null,"minAvailable":1}` | PodDisruptionBudget configuration to ensure a minimum number of Lokxy pods are always available during voluntary disruptions |
 | podDisruptionBudget.annotations | object | `{}` | Custom podDisruptionBudget annotations |
 | podDisruptionBudget.enabled | bool | `true` | Whether to create a PodDisruptionBudget for the Lokxy Deployment |
@@ -79,6 +83,7 @@ Kubernetes: `>=1.23.0-0`
 | podDisruptionBudget.maxUnavailable | string | `nil` | Maximum number of pods that can be unavailable during a voluntary disruption Set either `maxUnavailable` or `minAvailable`, not both. Example: 1 (absolute value) or "50%" (percentage) |
 | podDisruptionBudget.minAvailable | int | `1` | Minimum number of pods that must be available during a voluntary disruption Set either `minAvailable` or `maxUnavailable`, not both. Example: 1 (absolute value) or "50%" (percentage) |
 | ports | object | `{"metrics":3101,"service":3100}` | Container ports used by Lokxy |
+| rollOnConfigChange | bool | `true` | Roll the pods when the configuration changes (checksum/config pod annotation). Set to false when relying on hot reload (configWatch or the lifecycle endpoint) so config changes no longer trigger a rolling restart. |
 | route | object | `{"main":{"additionalRules":[],"annotations":{},"apiVersion":"gateway.networking.k8s.io/v1","enabled":false,"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"parentRefs":[]}}` | BETA: Configure the gateway routes for the chart here. More routes can be added by adding a dictionary key like the 'main' route. Be aware that this is an early beta of this feature, Being BETA this can/will change in the future without notice, do not use unless you want to take that risk [[ref]](<https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io%2fv1alpha2>) |
 | route.main.annotations | object | `{}` | Annotations to add to the route resource (e.g., cert-manager, NGINX settings) |
 | route.main.apiVersion | string | `"gateway.networking.k8s.io/v1"` | Set the route apiVersion, e.g. gateway.networking.k8s.io/v1 or gateway.networking.k8s.io/v1alpha2 |
@@ -97,4 +102,4 @@ Kubernetes: `>=1.23.0-0`
 | verticalPodAutoscaler.updatePolicy | object | `{"updateMode":"Auto"}` | VPA update policy: "Auto", "Initial", or "Off" |
 
 ----------------------------------------------
-Autogenerated from chart metadata using [helm-docs v1.11.0](https://github.com/norwoodj/helm-docs/releases/v1.11.0)
+Autogenerated from chart metadata using [helm-docs v1.14.2](https://github.com/norwoodj/helm-docs/releases/v1.14.2)

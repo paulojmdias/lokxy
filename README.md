@@ -9,6 +9,7 @@ Lokxy is a powerful log aggregator for Loki, designed to collect and unify log s
 - [How to Run as a Container](#how-to-run-as-a-container)
 - [Play with Lokxy](#play-with-lokxy)
 - [Configuration File](#configuration-file)
+- [Reloading Configuration](#reloading-configuration)
 - [Usage](#usage)
 
 ---
@@ -235,6 +236,36 @@ server_groups:
 The application includes tracing instrumentation using OpenTelemetry. To collect traces, deploy an OpenTelemetry Collector or compatible tracing backend such as Jaeger, Grafana Tempo, or Zipkin.
 
 Configure the trace export destination using standard OpenTelemetry environment variables: `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` for the collector endpoint, or `OTEL_EXPORTER_OTLP_ENDPOINT` as a fallback. Set `OTEL_EXPORTER_OTLP_INSECURE=true` for development environments using insecure gRPC connections. If no endpoint is configured, the application defaults to `localhost:4317` as per [otlp exporter documentation](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/). An example of this can also be fund in `mixin/play/`.
+
+## Reloading Configuration
+
+`lokxy` can reload its configuration file at runtime, without a restart. A reload validates the new configuration first — if it is invalid (or a referenced TLS file cannot be read), the reload fails and the previous configuration stays active.
+
+There are three ways to trigger a reload:
+
+1. **HTTP endpoint** — send a `POST` (or `PUT`) to `/-/reload` on the proxy port. Like Prometheus, this endpoint is disabled by default; start `lokxy` with `--enable-lifecycle` to enable it.
+
+   ```bash
+   curl -X POST http://localhost:3100/-/reload
+   ```
+
+2. **SIGHUP** — always enabled:
+
+   ```bash
+   kill -HUP $(pidof lokxy)
+   ```
+
+3. **File watching** — start `lokxy` with `--config.watch` and the configuration file is watched (via inotify/fsnotify) and reloaded automatically when it changes.
+
+The outcome of the last reload is exposed on the metrics endpoint as `lokxy_config_last_reload_successful` (1/0) and `lokxy_config_last_reload_success_timestamp_seconds`, so you can alert on failed reloads.
+
+**What is not reloaded:** the `logging` section (the logger is built at startup; a change is detected and logged, but requires a restart) and the CLI flags themselves (bind addresses, etc.).
+
+### Kubernetes notes
+
+- The file watcher works with ConfigMap/Secret volume mounts: the kubelet updates them atomically by swapping a `..data` symlink, and `lokxy` watches the config **directory** so it survives the swap. Changes can take up to about a minute to propagate to the volume.
+- `subPath` volume mounts are never updated by the kubelet, so file watching won't see changes there. The bundled Helm chart mounts the whole config directory and is not affected.
+- The Helm chart exposes `lifecycle.enabled` (adds `--enable-lifecycle`), `configWatch.enabled` (adds `--config.watch`), and `rollOnConfigChange` — set the latter to `false` to stop config changes from triggering a rolling restart once hot reload is enabled.
 
 ## Usage
 

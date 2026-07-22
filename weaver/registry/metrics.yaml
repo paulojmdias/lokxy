@@ -57,3 +57,46 @@ groups:
         requirement_level: required
       - ref: server_group
         requirement_level: required
+
+  - id: metric.lokxy.request.degraded
+    type: metric
+    metric_name: lokxy_request_degraded_total
+    instrument: counter
+    unit: "{request}"
+    stability: development
+    brief: >
+      Total number of upstream failures that did not fail the overall query
+      because the server group was configured with ignore_error or
+      downgrade_error
+    attributes:
+      - ref: path
+        requirement_level: required
+      - ref: method
+        requirement_level: required
+      - ref: server_group
+        requirement_level: required
+      - id: outcome
+        type: string
+        stability: development
+        brief: >
+          How the tolerated upstream failure was handled: ignored silently
+          (ignore_error) or surfaced as a warning on the merged response
+          (downgrade_error)
+        examples: ["ignored", "downgraded"]
+        requirement_level: required
+
+  - id: metric.lokxy.config.last_reload_successful
+    type: metric
+    metric_name: lokxy_config_last_reload_successful
+    instrument: gauge
+    unit: "1"
+    stability: development
+    brief: Whether the last configuration reload attempt was successful (1) or failed (0)
+
+  - id: metric.lokxy.config.last_reload_success_timestamp
+    type: metric
+    metric_name: lokxy_config_last_reload_success_timestamp_seconds
+    instrument: gauge
+    unit: s
+    stability: development
+    brief: Unix timestamp of the last successful configuration reload

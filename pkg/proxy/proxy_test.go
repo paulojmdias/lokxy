@@ -30,6 +30,15 @@ import (
 
 // ---------- helpers ----------
 
+// mustMux builds a Proxy from config and returns a serve mux with the
+// lifecycle endpoint disabled, failing the test on construction errors.
+func mustMux(tb testing.TB, logger log.Logger, config *cfg.Config) *http.ServeMux {
+	tb.Helper()
+	p, err := New(logger, config)
+	require.NoError(tb, err)
+	return NewServeMux(logger, p, nil, false)
+}
+
 func mkGzip(body []byte) []byte {
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
@@ -98,7 +107,7 @@ func TestProxy_ApiRoute_FanOutAndAggregateHook(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 
-	NewServeMux(logger, config).ServeHTTP(rr, req)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 
@@ -137,7 +146,7 @@ func TestProxy_DetectedFieldValues_PathExtractionAndMerge(t *testing.T) {
 	q.Set("query", `{app="lokxy"}`)
 	req.URL.RawQuery = q.Encode()
 
-	NewServeMux(logger, config).ServeHTTP(rr, req)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var out struct {
@@ -178,7 +187,7 @@ func TestProxy_UnknownPath_ForwardsFirstResponseWithGzipBody(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
 
-	NewServeMux(logger, config).ServeHTTP(rr, req)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.JSONEq(t, string(plain), rr.Body.String())
 }
@@ -216,7 +225,7 @@ func TestProxy_FanOut_POSTBodyReused(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, up, body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	NewServeMux(logger, config).ServeHTTP(rr, req)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	require.Equal(t, `query={app="lokxy"}`, got1)
@@ -265,7 +274,7 @@ func TestProxy_QueryRange_SlowStreamingBody_NotCanceledBeforeMerge(t *testing.T)
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, up+"?query=%7Bapp%3D%22lokxy%22%7D", nil)
 
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.False(t, slowCanceled.Load(), "slow upstream request context was canceled before body was fully read")
 	require.False(t, slowFinalWriteErr.Load(), "slow upstream could not finish writing the response body")
@@ -305,7 +314,7 @@ func TestProxy_UpstreamHeadersInjected(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, up, nil)
 	req.Header.Set("X-Lokxy", "from-client") // should be overwritten by config
 
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Equal(t, "from-config", seen)
 }
@@ -330,7 +339,7 @@ func TestProxy_DetectedFieldValues_UpstreamFailure(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/detected_field/"+encoded+"/values", nil)
 
-	NewServeMux(logger, config).ServeHTTP(rr, req)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
 
 	// Should return error when backend fails (fail-fast behavior)
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -355,7 +364,7 @@ func TestProxy_ApiRoutes_Dispatch(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series", nil)
 
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var got map[string]any
@@ -388,7 +397,7 @@ func TestProxy_AllBackendsFailWithError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query?query={}", nil)
 
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 
 	// Should return error status from first backend
 	require.Equal(t, http.StatusBadRequest, rr.Code)
@@ -424,7 +433,7 @@ func TestProxy_AnyBackendFailure_ReturnsError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 
 	// Should return error when backend fails
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -441,7 +450,7 @@ func TestProxy_UnreachableBackend_ReturnsConnectionError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 
 	// Should return 502 Bad Gateway for connection errors
 	require.Equal(t, http.StatusBadGateway, rr.Code)
@@ -462,7 +471,7 @@ func TestProxy_NoHealthyUpstreams_Returns502(t *testing.T) {
 	// Use a path that falls through to forwardFirstResponse
 	req := httptest.NewRequest(http.MethodGet, "/some/unknown/path", nil)
 
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 
 	// Should return 502 Bad Gateway when no upstreams respond
 	require.Equal(t, http.StatusBadGateway, rr.Code)
@@ -502,7 +511,7 @@ func TestProxy_IgnoreError_PartialResultsNoWarning(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?query={app=\"a\"}", nil)
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, rr.Body.String(), "hello")
@@ -534,7 +543,7 @@ func TestProxy_DowngradeError_SurfacesWarning(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?query={app=\"a\"}", nil)
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	body := rr.Body.String()
@@ -564,7 +573,7 @@ func TestProxy_AllOptionalGroupsFail_ForwardsError(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?query={app=\"a\"}", nil)
-	NewServeMux(logger, cfg).ServeHTTP(rr, req)
+	mustMux(t, logger, cfg).ServeHTTP(rr, req)
 
 	require.GreaterOrEqual(t, rr.Code, 400)
 	require.Contains(t, rr.Header().Get("Failed-Backend"), "sg")
@@ -689,7 +698,7 @@ func TestFanoutRequest_RequestBodyReadError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/labels", &errorReader{})
 
-	NewServeMux(logger, config).ServeHTTP(rr, req)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
@@ -700,9 +709,9 @@ type errorReader struct{}
 func (e *errorReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
 
 func TestProxyHandler_HTTPClientCreationFailure(t *testing.T) {
-	// If a ServerGroup has an invalid CA file, createHTTPClient fails during
-	// proxyHandler construction; the backend entry is skipped (no client added).
-	// A request to that path hits the "missing HTTP client" BackendError → 502.
+	// If a ServerGroup has an invalid CA file, createHTTPClient fails and the
+	// proxy refuses to build: New returns an error instead of serving with a
+	// silently skipped backend.
 	logger := log.NewNopLogger()
 
 	badCfg := &cfg.Config{
@@ -719,13 +728,104 @@ func TestProxyHandler_HTTPClientCreationFailure(t *testing.T) {
 		},
 	}
 
-	mux := NewServeMux(logger, badCfg)
+	p, err := New(logger, badCfg)
+	require.Error(t, err)
+	require.Nil(t, p)
+	require.Contains(t, err.Error(), "badCA")
+}
+
+func TestProxy_ApplyConfig_SwapsBackends(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	oldBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status":"success","data":["old"]}`)
+	}))
+	defer oldBackend.Close()
+
+	newBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status":"success","data":["new"]}`)
+	}))
+	defer newBackend.Close()
+
+	p, err := New(logger, mkConfig(oldBackend.URL))
+	require.NoError(t, err)
+	mux := NewServeMux(logger, p, nil, false)
+
+	get := func() []any {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+		mux.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+		values, _ := got["data"].([]any)
+		return values
+	}
+
+	require.Equal(t, []any{"old"}, get())
+
+	require.NoError(t, p.ApplyConfig(mkConfig(newBackend.URL)))
+	require.Equal(t, []any{"new"}, get())
+}
+
+func TestProxy_ApplyConfig_InvalidKeepsOldConfig(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status":"success","data":["ok"]}`)
+	}))
+	defer backend.Close()
+
+	p, err := New(logger, mkConfig(backend.URL))
+	require.NoError(t, err)
+
+	badCfg := mkConfig("http://localhost:1")
+	badCfg.ServerGroups[0].HTTPClientConfig.TLSConfig.CAFile = "/nonexistent/ca.pem"
+	require.Error(t, p.ApplyConfig(badCfg))
+
+	// The previous configuration still serves.
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
-	mux.ServeHTTP(rr, req)
+	NewServeMux(logger, p, nil, false).ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Contains(t, rr.Body.String(), "ok")
+}
 
-	// No client was created, so fanout returns "missing HTTP client" → 502.
-	require.Equal(t, http.StatusBadGateway, rr.Code)
+func TestProxy_ApplyConfig_ConcurrentWithRequests(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status":"success","data":[]}`)
+	}))
+	defer backend.Close()
+
+	p, err := New(logger, mkConfig(backend.URL))
+	require.NoError(t, err)
+	mux := NewServeMux(logger, p, nil, false)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 50; i++ {
+			cfgCopy := mkConfig(backend.URL)
+			if err := p.ApplyConfig(cfgCopy); err != nil {
+				t.Errorf("ApplyConfig failed: %v", err)
+				return
+			}
+		}
+	}()
+
+	for i := 0; i < 50; i++ {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+		mux.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+	}
+	<-done
 }
 
 func TestRoundTrip_UpstreamError(t *testing.T) {
@@ -881,7 +981,7 @@ func TestFanout_NoHeaderLoggingWhenDebugOff(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
 	req.Header.Set("X-Custom", "should-not-appear")
 
-	NewServeMux(logger, config).ServeHTTP(rr, req)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.NotContains(t, buf.String(), "Request Header")
@@ -907,7 +1007,7 @@ func TestFanout_HeaderLoggingRedactsSensitiveValues(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer top-secret-token")
 	req.Header.Set("X-Safe-Header", "visible-value")
 
-	NewServeMux(logger, config).ServeHTTP(rr, req)
+	mustMux(t, logger, config).ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	// Debug header logging should appear
@@ -937,7 +1037,7 @@ func TestMetricPathLabel_UsesRoutePattern(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/label/namespace/values", nil)
-	NewServeMux(log.NewNopLogger(), mkConfig(srv.URL)).ServeHTTP(rr, req)
+	mustMux(t, log.NewNopLogger(), mkConfig(srv.URL)).ServeHTTP(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	// Collect metrics and extract the "path" attribute from lokxy_request_count_total.

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,7 @@ func TestNewServeMux_Healthy(t *testing.T) {
 		ServerGroups: []config.ServerGroup{{Name: "loki1", URL: "http://localhost:3100"}},
 	}
 
-	mux := NewServeMux(logger, cfg)
+	mux := mustMux(t, logger, cfg)
 	req := httptest.NewRequest(http.MethodGet, "/healthy", nil)
 	w := httptest.NewRecorder()
 
@@ -40,7 +41,7 @@ func TestNewServeMux_Ready_WhenReady(t *testing.T) {
 	config.SetReady(true)
 	t.Cleanup(func() { config.SetReady(false) })
 
-	mux := NewServeMux(logger, cfg)
+	mux := mustMux(t, logger, cfg)
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()
 
@@ -60,7 +61,7 @@ func TestNewServeMux_Ready_WhenNotReady(t *testing.T) {
 
 	config.SetReady(false)
 
-	mux := NewServeMux(logger, cfg)
+	mux := mustMux(t, logger, cfg)
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()
 
@@ -70,6 +71,99 @@ func TestNewServeMux_Ready_WhenNotReady(t *testing.T) {
 	body, err := io.ReadAll(w.Body)
 	require.NoError(t, err)
 	assert.Equal(t, "Not Ready", string(body))
+}
+
+func TestNewServeMux_Reload_Success(t *testing.T) {
+	logger := log.NewNopLogger()
+	cfg := &config.Config{
+		ServerGroups: []config.ServerGroup{{Name: "loki1", URL: "http://localhost:3100"}},
+	}
+
+	p, err := New(logger, cfg)
+	require.NoError(t, err)
+
+	called := false
+	mux := NewServeMux(logger, p, func() error {
+		called = true
+		return nil
+	}, true)
+
+	req := httptest.NewRequest(http.MethodPost, "/-/reload", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, called)
+	assert.Contains(t, w.Body.String(), "config reloaded")
+}
+
+func TestNewServeMux_Reload_Failure(t *testing.T) {
+	logger := log.NewNopLogger()
+	cfg := &config.Config{
+		ServerGroups: []config.ServerGroup{{Name: "loki1", URL: "http://localhost:3100"}},
+	}
+
+	p, err := New(logger, cfg)
+	require.NoError(t, err)
+
+	mux := NewServeMux(logger, p, func() error {
+		return errors.New("bad config file")
+	}, true)
+
+	req := httptest.NewRequest(http.MethodPost, "/-/reload", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "bad config file")
+}
+
+func TestNewServeMux_Reload_LifecycleDisabled(t *testing.T) {
+	logger := log.NewNopLogger()
+	cfg := &config.Config{
+		ServerGroups: []config.ServerGroup{{Name: "loki1", URL: "http://localhost:3100"}},
+	}
+
+	p, err := New(logger, cfg)
+	require.NoError(t, err)
+
+	called := false
+	mux := NewServeMux(logger, p, func() error {
+		called = true
+		return nil
+	}, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/-/reload", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	assert.False(t, called)
+}
+
+func TestNewServeMux_Reload_MethodNotAllowed(t *testing.T) {
+	logger := log.NewNopLogger()
+	cfg := &config.Config{
+		ServerGroups: []config.ServerGroup{{Name: "loki1", URL: "http://localhost:3100"}},
+	}
+
+	p, err := New(logger, cfg)
+	require.NoError(t, err)
+
+	called := false
+	mux := NewServeMux(logger, p, func() error {
+		called = true
+		return nil
+	}, true)
+
+	// A GET must not be proxied to the backends nor trigger a reload.
+	req := httptest.NewRequest(http.MethodGet, "/-/reload", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusMethodNotAllowed, w.Code)
+	assert.Equal(t, "POST, PUT", w.Header().Get("Allow"))
+	assert.False(t, called)
 }
 
 func TestNewServeMux_ProxyCatchAll(t *testing.T) {
@@ -87,7 +181,7 @@ func TestNewServeMux_ProxyCatchAll(t *testing.T) {
 		},
 	}
 
-	mux := NewServeMux(logger, cfg)
+	mux := mustMux(t, logger, cfg)
 
 	// Hit an unknown path that falls through to the catch-all proxy handler
 	req := httptest.NewRequest(http.MethodGet, "/some/unknown/path", nil)

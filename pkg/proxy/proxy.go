@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -186,11 +187,23 @@ func createHTTPClient(instance cfg.ServerGroup, logger log.Logger) (*http.Client
 }
 
 type (
-	proxy struct {
+	// Proxy fans requests out to the configured server groups. The loaded
+	// configuration and the HTTP clients built from it are held in an
+	// atomically swappable snapshot so the configuration can be reloaded at
+	// runtime without a restart.
+	Proxy struct {
+		logger log.Logger
+		state  atomic.Pointer[proxyState]
+	}
+
+	// proxyState is an immutable snapshot of a loaded configuration and the
+	// HTTP clients built from it. Each request loads one snapshot and uses it
+	// for its whole lifetime, so a request never mixes old and new config.
+	proxyState struct {
 		config  *cfg.Config
-		logger  log.Logger
 		clients map[string]*http.Client
 	}
+
 	transformFn func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, []string, log.Logger)
 
 	// softFailure is an upstream failure from a server group configured with
@@ -201,28 +214,56 @@ type (
 	}
 )
 
-func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWriter, *http.Request) {
-	clients := make(map[string]*http.Client)
+// New builds a Proxy from the given configuration. It fails if any server
+// group's HTTP client cannot be created (e.g. an unreadable TLS file).
+func New(logger log.Logger, config *cfg.Config) (*Proxy, error) {
+	p := &Proxy{logger: logger}
+	if err := p.ApplyConfig(config); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// ApplyConfig atomically replaces the proxy's configuration and HTTP clients.
+// If any client cannot be built, the previous configuration stays active and
+// the error is returned. In-flight requests keep using the snapshot they
+// started with; idle connections of the replaced clients are closed.
+func (p *Proxy) ApplyConfig(config *cfg.Config) error {
+	state, err := buildState(config, p.logger)
+	if err != nil {
+		return err
+	}
+	old := p.state.Swap(state)
+	if old != nil {
+		for _, client := range old.clients {
+			client.CloseIdleConnections()
+		}
+	}
+	return nil
+}
+
+func buildState(config *cfg.Config, logger log.Logger) (*proxyState, error) {
+	clients := make(map[string]*http.Client, len(config.ServerGroups))
 	for _, instance := range config.ServerGroups {
 		client, err := createHTTPClient(instance, logger)
 		if err != nil {
-			level.Error(logger).Log("msg", "Failed to create HTTP client", "instance", instance.Name, "err", err)
-			continue
+			return nil, fmt.Errorf("failed to create HTTP client for server group %q: %w", instance.Name, err)
 		}
 		clients[instance.Name] = client
 	}
+	return &proxyState{config: config, clients: clients}, nil
+}
 
-	p := &proxy{
-		config:  config,
-		logger:  logger,
-		clients: clients,
-	}
+// Handler returns the proxy's request handler. The routes are fixed; the
+// configuration backing them is read from the current snapshot per request.
+func (p *Proxy) Handler() func(http.ResponseWriter, *http.Request) {
+	logger := p.logger
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/loki/api/v1/tail", func(w http.ResponseWriter, r *http.Request) {
 		span := trace.SpanFromContext(r.Context())
 		span.SetAttributes(attribute.String("proxy.route_type", "websocket"))
-		handler.HandleTailWebSocket(r.Context(), w, r, config, logger)
+		handler.HandleTailWebSocket(r.Context(), w, r, p.state.Load().config, logger)
 	})
 
 	mux.HandleFunc("/loki/api/v1/label/{name}/values", func(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +337,7 @@ func proxyHandler(config *cfg.Config, logger log.Logger) func(http.ResponseWrite
 			semconv.URLPath(path),
 			semconv.HTTPRequestMethodKey.String(method),
 			semconv.URLQuery(r.URL.RawQuery),
-			attribute.Int("lokxy.server_groups", len(config.ServerGroups)),
+			attribute.Int("lokxy.server_groups", len(p.state.Load().config.ServerGroups)),
 		)
 
 		level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
@@ -344,8 +385,12 @@ func forwardFirstResponse(_ context.Context, w http.ResponseWriter, results <-ch
 	}
 }
 
-func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transformFn) {
+func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transformFn) {
 	startTime := time.Now()
+
+	// Load one snapshot for the whole request so the server groups and the
+	// clients built from them always match, even across a concurrent reload.
+	st := p.state.Load()
 
 	// Read the original request body once
 	span := trace.SpanFromContext(r.Context())
@@ -367,15 +412,15 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 	bodyReader := func() io.ReadCloser {
 		return io.NopCloser(bytes.NewReader(bodyBytes))
 	}
-	results := make(chan *proxyresponse.BackendResponse, len(p.config.ServerGroups))
+	results := make(chan *proxyresponse.BackendResponse, len(st.config.ServerGroups))
 	// softErrs collects failures from server groups configured with
 	// ignore_error/downgrade_error so they do not fail the overall query.
-	softErrs := make(chan softFailure, len(p.config.ServerGroups))
+	softErrs := make(chan softFailure, len(st.config.ServerGroups))
 	ctx := r.Context()
 
 	// Forward requests using the custom RoundTripper
 	wg, ctx := errgroup.WithContext(ctx)
-	for _, instance := range p.config.ServerGroups {
+	for _, instance := range st.config.ServerGroups {
 		wg.Go(func() error {
 			// Classify this server group's error-handling policy. A required
 			// group (the default) fails the whole query on error; an optional
@@ -399,7 +444,7 @@ func (p *proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 				attribute.String("upstream.url", instance.URL),
 			)
 
-			client, ok := p.clients[instance.Name]
+			client, ok := st.clients[instance.Name]
 			if !ok {
 				requestSpan.SetStatus(codes.Error, "Missing HTTP client")
 				level.Error(p.logger).Log("msg", "Missing HTTP client", "instance", instance.Name)

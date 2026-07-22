@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -57,7 +58,12 @@ server_groups:
 	t.Cleanup(cancel)
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		return run(ctx, logger, cfg, ":3100", ":9091")
+		return run(ctx, logger, cfg, runOptions{
+			bindAddr:        ":3100",
+			metricsAddr:     ":9091",
+			configPath:      configFile.Name(),
+			enableLifecycle: true,
+		})
 	})
 
 	require.Eventuallyf(t, func() bool {
@@ -91,16 +97,29 @@ server_groups:
 		}
 	})
 
-	t.Run("test proxy handler", func(t *testing.T) {
+	t.Run("test proxy handler after reload", func(t *testing.T) {
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer backend.Close()
-		// Update all server groups to use the test backend URL
-		// Otherwise unreachable backends will cause 502 errors
-		for i := range cfg.ServerGroups {
-			cfg.ServerGroups[i].URL = backend.URL
-		}
+
+		// Point the config file at the test backend and reload via the
+		// lifecycle endpoint. Otherwise unreachable backends cause 502 errors.
+		newConfig := `
+logging:
+  level: info
+  format: json
+server_groups:
+  - name: loki1
+    url: ` + backend.URL + `
+    timeout: 10
+`
+		require.NoError(t, os.WriteFile(configFile.Name(), []byte(newConfig), 0o600))
+
+		reloadResp, err := http.Post("http://localhost:3100/-/reload", "", nil)
+		require.NoError(t, err)
+		defer reloadResp.Body.Close()
+		require.Equal(t, http.StatusOK, reloadResp.StatusCode)
 
 		req, err := http.NewRequest("GET", "http://localhost:3100/", nil)
 		if err != nil {
@@ -115,6 +134,31 @@ server_groups:
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Handler returned wrong status code: got %v want %v", resp.StatusCode, http.StatusOK)
 		}
+	})
+
+	t.Run("test reload with invalid config fails and keeps serving", func(t *testing.T) {
+		// Break the config file: reload must fail with 500 and the proxy must
+		// keep the previously loaded configuration.
+		require.NoError(t, os.WriteFile(configFile.Name(), []byte("server_groups: []\n"), 0o600))
+
+		reloadResp, err := http.Post("http://localhost:3100/-/reload", "", nil)
+		require.NoError(t, err)
+		defer reloadResp.Body.Close()
+		require.Equal(t, http.StatusInternalServerError, reloadResp.StatusCode)
+
+		resp, err := http.Get("http://localhost:3100/healthy")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("test reload metrics exposed", func(t *testing.T) {
+		resp, err := http.Get("http://localhost:9091/metrics")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "lokxy_config_last_reload_successful")
 	})
 
 	t.Run("test healthy endpoint", func(t *testing.T) {
@@ -172,7 +216,7 @@ func TestRun_ListenerBindFailure(t *testing.T) {
 
 	ctx := t.Context()
 	// Pass the already-occupied address as the metrics bind address.
-	err = run(ctx, logger, cfg, "127.0.0.1:0", occupiedAddr)
+	err = run(ctx, logger, cfg, runOptions{bindAddr: "127.0.0.1:0", metricsAddr: occupiedAddr})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to start")
 }
@@ -186,7 +230,7 @@ func TestRun_ContextCancellation(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(ctx, logger, cfg, "127.0.0.1:0", "127.0.0.1:0")
+		done <- run(ctx, logger, cfg, runOptions{bindAddr: "127.0.0.1:0", metricsAddr: "127.0.0.1:0"})
 	}()
 
 	// Let the servers start, then cancel.

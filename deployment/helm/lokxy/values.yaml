@@ -80,6 +80,24 @@ ports:
   service: 3100
   metrics: 3101
 
+# -- Lifecycle API configuration
+lifecycle:
+  # -- Enable the /-/reload HTTP endpoint (--enable-lifecycle) to reload the
+  # configuration without restarting the pods
+  enabled: false
+
+# -- Automatic configuration reload
+configWatch:
+  # -- Watch the mounted configuration file and reload it automatically when
+  # it changes (--config.watch). Works with ConfigMap/Secret updates, which
+  # the kubelet propagates to the volume without restarting the pod.
+  enabled: false
+
+# -- Roll the pods when the configuration changes (checksum/config pod
+# annotation). Set to false when relying on hot reload (configWatch or the
+# lifecycle endpoint) so config changes no longer trigger a rolling restart.
+rollOnConfigChange: true
+
 # -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
 # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use environment variables in the configuration.
 # Such environment variables can be then stored in a separate Secret and injected via the deployment.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -9,12 +10,13 @@ import (
 	"github.com/paulojmdias/lokxy/pkg/config"
 )
 
-// NewServeMux returns an [http.ServeMux] preconfigured with a lokxy
+// NewServeMux returns an [http.ServeMux] preconfigured with the lokxy
 // handlers.
 //
-// This function is typically used to mount a dedicated metrics server
-// or to integrate metrics into an existing HTTP server.
-func NewServeMux(logger log.Logger, cfg *config.Config) *http.ServeMux {
+// reload is invoked by the /-/reload endpoint to re-read and apply the
+// configuration; it is only reachable when enableLifecycle is true
+// (mirroring Prometheus' --web.enable-lifecycle behavior).
+func NewServeMux(logger log.Logger, p *Proxy, reload func() error, enableLifecycle bool) *http.ServeMux {
 	proxyMux := http.NewServeMux()
 
 	// Liveness probe endpoint
@@ -39,7 +41,29 @@ func NewServeMux(logger log.Logger, cfg *config.Config) *http.ServeMux {
 		}
 	})
 
+	// Configuration reload endpoint (Prometheus-style lifecycle API).
+	// Registered explicitly for every method so a GET does not fall through
+	// to the catch-all proxy handler.
+	proxyMux.HandleFunc("/-/reload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			w.Header().Set("Allow", "POST, PUT")
+			http.Error(w, "method not allowed: use POST", http.StatusMethodNotAllowed)
+			return
+		}
+		if !enableLifecycle || reload == nil {
+			http.Error(w, "Lifecycle API is not enabled (--enable-lifecycle flag)", http.StatusForbidden)
+			return
+		}
+		if err := reload(); err != nil {
+			http.Error(w, fmt.Sprintf("failed to reload config: %s", err), http.StatusInternalServerError)
+			return
+		}
+		if _, err := w.Write([]byte("config reloaded")); err != nil {
+			level.Error(logger).Log("msg", "Failed to write response in /-/reload handler", "err", err)
+		}
+	})
+
 	// Register the proxy handler for all other requests
-	proxyMux.HandleFunc("/", proxyHandler(cfg, logger))
+	proxyMux.HandleFunc("/", p.Handler())
 	return proxyMux
 }
