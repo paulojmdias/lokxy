@@ -35,7 +35,7 @@ jobs:
             go-bench-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v4
+        uses: CodSpeedHQ/action@v4.19.1
         with:
           mode: walltime
           run: make benchmark

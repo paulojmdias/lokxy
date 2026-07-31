@@ -26,7 +26,7 @@ jobs:
           cache: false
 
       - name: Setup Weaver
-        uses: open-telemetry/weaver/.github/actions/setup-weaver@adcf6fda79c3df1cb537669442aef753b7019777 # v0.24.2
+        uses: open-telemetry/weaver/.github/actions/setup-weaver@26c685ff52b925056ff1d53476c6022638c01220 # v0.25.1
 
       - name: Validate telemetry schema
         run: weaver registry check -r ./weaver/ --future
