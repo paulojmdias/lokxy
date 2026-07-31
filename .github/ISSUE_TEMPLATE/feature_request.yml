@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest an idea or improvement for lokxy
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement!
+
+        Please search the [existing issues](https://github.com/paulojmdias/lokxy/issues) first —
+        someone may have already proposed this.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do, and what makes it hard today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like lokxy to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you have tried.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Config snippets, links, or anything else that helps.
+
+  - type: checkboxes
+    id: duplicates
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched the existing issues and this is not a duplicate.
+          required: true
