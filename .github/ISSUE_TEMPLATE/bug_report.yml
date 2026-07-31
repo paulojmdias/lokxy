@@ -1,0 +1,91 @@
+name: Bug report
+description: Report a problem with lokxy
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+
+        Please search the [existing issues](https://github.com/paulojmdias/lokxy/issues) first —
+        someone may have already reported this.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start lokxy with the config below
+        2. Query `...`
+        3. See error
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Lokxy version
+      description: Release tag, image tag, or commit SHA.
+      placeholder: v0.1.0 / paulojmdias/lokxy:main / d2edc9b
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running lokxy?
+      options:
+        - Binary
+        - Docker
+        - Helm chart
+        - Kubernetes (other)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: >-
+        The relevant part of your `config.yaml` (especially `server_groups`).
+        Please redact any credentials, tokens, or internal hostnames.
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lokxy log output.
+      render: shell
+
+  - type: input
+    id: loki-version
+    attributes:
+      label: Loki version(s) of the backends
+      placeholder: "3.5.0"
+
+  - type: checkboxes
+    id: duplicates
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched the existing issues and this is not a duplicate.
+          required: true
