@@ -30,6 +30,30 @@ type encodingFlagsEnvelope struct {
 
 // Handle Loki query and query_range responses
 func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+	handleLokiQueries(w, results, warnings, logger, 0, "backward")
+}
+
+// HandleLokiQueriesWithRequest merges query responses using the caller's
+// direction and global entry limit. The limit must be applied after fan-in;
+// applying it independently at each backend multiplies the result by the
+// number of configured server groups.
+func HandleLokiQueriesWithRequest(_ context.Context, w http.ResponseWriter, r *http.Request, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+	limit := 0
+	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
+		if parsedLimit, err := strconv.Atoi(rawLimit); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	direction := r.URL.Query().Get("direction")
+	if direction != "forward" {
+		direction = "backward"
+	}
+
+	handleLokiQueries(w, results, warnings, logger, limit, direction)
+}
+
+func handleLokiQueries(w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger, limit int, direction string) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
 	var mergedVector loghttp.Vector
@@ -181,6 +205,7 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 
 	switch resultType {
 	case loghttp.ResultTypeStream:
+		mergedStreams = mergeAndLimitStreams(mergedStreams, limit, direction)
 		var formattedResults []map[string]any
 		for _, stream := range mergedStreams {
 			values := make([][]any, len(stream.Entries))
@@ -279,6 +304,92 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 	if err := json.NewEncoder(w).Encode(finalResponse); err != nil {
 		level.Error(logger).Log("msg", "Failed to encode final response", "err", err)
 	}
+}
+
+// mergeAndLimitStreams combines equivalent streams from all backends, removes
+// duplicate entries introduced by overlapping backends, and applies the Loki
+// limit to the complete fan-in result.
+func mergeAndLimitStreams(streams []loghttp.Stream, limit int, direction string) []loghttp.Stream {
+	merged := make(map[string]*loghttp.Stream, len(streams))
+	for _, stream := range streams {
+		key := stream.Labels.String()
+		if existing, ok := merged[key]; ok {
+			existing.Entries = append(existing.Entries, stream.Entries...)
+			continue
+		}
+
+		streamCopy := stream
+		streamCopy.Entries = append([]loghttp.Entry(nil), stream.Entries...)
+		merged[key] = &streamCopy
+	}
+
+	type streamEntry struct {
+		streamKey string
+		entry     loghttp.Entry
+	}
+	entries := make([]streamEntry, 0)
+	for streamKey, stream := range merged {
+		seen := make(map[string]struct{}, len(stream.Entries))
+		unique := stream.Entries[:0]
+		for _, entry := range stream.Entries {
+			entryKey := strconv.FormatInt(entry.Timestamp.UnixNano(), 10) + "\x00" + entry.Line
+			if _, ok := seen[entryKey]; ok {
+				continue
+			}
+			seen[entryKey] = struct{}{}
+			unique = append(unique, entry)
+		}
+		stream.Entries = unique
+		for _, entry := range unique {
+			entries = append(entries, streamEntry{streamKey: streamKey, entry: entry})
+		}
+	}
+
+	sort.SliceStable(entries, func(i, j int) bool {
+		left, right := entries[i], entries[j]
+		if !left.entry.Timestamp.Equal(right.entry.Timestamp) {
+			if direction == "forward" {
+				return left.entry.Timestamp.Before(right.entry.Timestamp)
+			}
+			return left.entry.Timestamp.After(right.entry.Timestamp)
+		}
+		if left.streamKey != right.streamKey {
+			return left.streamKey < right.streamKey
+		}
+		return left.entry.Line < right.entry.Line
+	})
+
+	if limit > 0 && len(entries) > limit {
+		entries = entries[:limit]
+	}
+
+	selected := make(map[string]*loghttp.Stream, len(merged))
+	for streamKey, original := range merged {
+		if len(original.Entries) == 0 {
+			selected[streamKey] = &loghttp.Stream{Labels: original.Labels}
+		}
+	}
+	for _, item := range entries {
+		stream, ok := selected[item.streamKey]
+		if !ok {
+			original := merged[item.streamKey]
+			stream = &loghttp.Stream{Labels: original.Labels}
+			selected[item.streamKey] = stream
+		}
+		stream.Entries = append(stream.Entries, item.entry)
+	}
+
+	keys := make([]string, 0, len(selected))
+	for key := range selected {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+
+	result := make([]loghttp.Stream, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, *selected[key])
+	}
+	return result
 }
 
 // modelMetricKey creates a consistent string key from a model.Metric for
