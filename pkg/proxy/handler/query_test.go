@@ -204,6 +204,42 @@ func TestHandleLokiQueries_MultipleStreamResponses(t *testing.T) {
 	require.Len(t, result, 2)
 }
 
+func TestHandleLokiQueriesWithRequest_MergesAndLimitsStreams(t *testing.T) {
+	logger := log.NewNopLogger()
+	responses := []string{
+		`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"api"},"values":[["1609459200000000000","old"],["1609459203000000000","new"]]}],"stats":{}}}`,
+		`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"api"},"values":[["1609459203000000000","new"],["1609459202000000000","middle"]]}],"stats":{}}}`,
+		`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"worker"},"values":[["1609459204000000000","latest"]]}],"stats":{}}}`,
+	}
+
+	results := make(chan *proxyresponse.BackendResponse, len(responses))
+	for _, response := range responses {
+		rec := httptest.NewRecorder()
+		rec.WriteString(response)
+		results <- wrapResponse(rec.Result())
+	}
+	close(results)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?direction=backward&limit=2", nil)
+	HandleLokiQueriesWithRequest(r.Context(), w, r, results, nil, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	result, ok := data["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, result, 2)
+
+	entries := 0
+	for _, rawStream := range result {
+		stream := rawStream.(map[string]any)
+		entries += len(stream["values"].([]any))
+	}
+	require.Equal(t, 2, entries)
+}
+
 func TestHandleLokiQueries_WithEncodingFlags(t *testing.T) {
 	logger := log.NewNopLogger()
 
