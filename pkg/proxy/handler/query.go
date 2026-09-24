@@ -206,6 +206,7 @@ func handleLokiQueries(w http.ResponseWriter, results <-chan *proxyresponse.Back
 	switch resultType {
 	case loghttp.ResultTypeStream:
 		mergedStreams = mergeAndLimitStreams(mergedStreams, limit, direction)
+		_, categorizeLabels := encodingFlagsMap["categorize-labels"]
 		var formattedResults []map[string]any
 		for _, stream := range mergedStreams {
 			values := make([][]any, len(stream.Entries))
@@ -228,8 +229,11 @@ func handleLokiQueries(w http.ResponseWriter, results <-chan *proxyresponse.Back
 					metadata["parsed"] = entry.Parsed
 				}
 
-				// If the metadata map is not empty, append it to the values
-				if len(metadata) > 0 {
+				// Loki requires a third metadata object for every value when
+				// categorize-labels is enabled, even when that object is empty.
+				// Grafana's Loki datasource uses the encoding flag to select
+				// that response shape while parsing the stream.
+				if categorizeLabels || len(metadata) > 0 {
 					values[i] = append(values[i], metadata)
 				}
 			}

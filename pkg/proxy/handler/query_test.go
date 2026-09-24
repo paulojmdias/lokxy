@@ -310,6 +310,45 @@ func TestHandleLokiQueries_WithStructuredMetadata(t *testing.T) {
 	require.Equal(t, "streams", data["resultType"])
 }
 
+func TestHandleLokiQueries_CategorizeLabelsPreservesEmptyMetadata(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	body := `{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [
+				{
+					"stream": {"app": "nginx"},
+					"values": [["1609459200000000000", "log line"]]
+				}
+			],
+			"stats": {},
+			"encodingFlags": ["categorize-labels"]
+		}
+	}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	HandleLokiQueries(t.Context(), w, results, nil, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	result := data["result"].([]any)
+	stream := result[0].(map[string]any)
+	values := stream["values"].([]any)
+	value := values[0].([]any)
+	require.Len(t, value, 3)
+	require.Equal(t, map[string]any{}, value[2])
+}
+
 func TestHandleLokiQueries_EmptyResult(t *testing.T) {
 	logger := log.NewNopLogger()
 
