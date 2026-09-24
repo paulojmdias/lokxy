@@ -204,7 +204,8 @@ type (
 		clients map[string]*http.Client
 	}
 
-	transformFn func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, []string, log.Logger)
+	transformFn        func(context.Context, http.ResponseWriter, <-chan *proxyresponse.BackendResponse, []string, log.Logger)
+	requestTransformFn func(context.Context, http.ResponseWriter, *http.Request, <-chan *proxyresponse.BackendResponse, []string, log.Logger)
 
 	// softFailure is an upstream failure from a server group configured with
 	// ignore_error or downgrade_error. It does not fail the overall query.
@@ -297,12 +298,11 @@ func (p *Proxy) Handler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		p.fanoutRequest(w, r, handler.HandleLokiQueries)
+		p.fanoutRequestWithRequest(w, r, handler.HandleLokiQueriesWithRequest)
 	})
 
 	// Variable to hold the API routes and their corresponding handlers
 	apiRoutes := map[string]transformFn{
-		"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 		"/loki/api/v1/series":             handler.HandleLokiSeries,
 		"/loki/api/v1/index/stats":        handler.HandleLokiStats,
 		"/loki/api/v1/labels":             handler.HandleLokiLabels,
@@ -312,6 +312,11 @@ func (p *Proxy) Handler() func(http.ResponseWriter, *http.Request) {
 		"/loki/api/v1/patterns":           handler.HandleLokiPatterns,
 		"/loki/api/v1/detected_fields":    handler.HandleLokiDetectedFields,
 	}
+	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
+		p.fanoutRequestWithRequest(w, r, handler.HandleLokiQueriesWithRequest)
+	})
 	for path, handlerFunc := range apiRoutes {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			span := trace.SpanFromContext(r.Context())
@@ -665,4 +670,10 @@ func (p *Proxy) fanoutRequest(w http.ResponseWriter, r *http.Request, fn transfo
 
 	// Combine responses into expected response
 	fn(r.Context(), w, results, warnings, p.logger)
+}
+
+func (p *Proxy) fanoutRequestWithRequest(w http.ResponseWriter, r *http.Request, fn requestTransformFn) {
+	p.fanoutRequest(w, r, func(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+		fn(ctx, w, r, results, warnings, logger)
+	})
 }
