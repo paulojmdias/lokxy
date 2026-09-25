@@ -1,7 +1,9 @@
 package traces
 
 import (
+	"bufio"
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -327,6 +329,35 @@ func TestResponseWriter(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(data), n)
 	require.Equal(t, string(data), rr.Body.String())
+}
+
+func TestResponseWriterPreservesHijacking(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	underlying := &hijackableResponseWriter{
+		ResponseRecorder: httptest.NewRecorder(),
+		conn:             serverConn,
+		buf:              bufio.NewReadWriter(bufio.NewReader(serverConn), bufio.NewWriter(serverConn)),
+	}
+	rw := &responseWriter{ResponseWriter: underlying, statusCode: http.StatusOK}
+
+	conn, buf, err := rw.Hijack()
+
+	require.NoError(t, err)
+	require.Same(t, serverConn, conn)
+	require.Same(t, underlying.buf, buf)
+}
+
+type hijackableResponseWriter struct {
+	*httptest.ResponseRecorder
+	conn net.Conn
+	buf  *bufio.ReadWriter
+}
+
+func (w *hijackableResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return w.conn, w.buf, nil
 }
 
 func TestResponseWriterDefaultStatusCode(t *testing.T) {
