@@ -1,9 +1,11 @@
 package traces
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -130,6 +132,25 @@ func HTTPTracesHandler(logger log.Logger) func(http.Handler) http.Handler {
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
+}
+
+var _ http.Hijacker = (*responseWriter)(nil)
+
+// Hijack preserves WebSocket support for handlers behind the tracing
+// middleware. Gorilla WebSocket requires the response writer to implement
+// http.Hijacker during the upgrade handshake.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("http.ResponseWriter does not support hijacking")
+	}
+	return hijacker.Hijack()
+}
+
+// Unwrap lets http.ResponseController access optional interfaces implemented
+// by the underlying response writer.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
 }
 
 func (rw *responseWriter) WriteHeader(statusCode int) {
