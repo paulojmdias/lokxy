@@ -331,7 +331,7 @@ func TestResponseWriter(t *testing.T) {
 	require.Equal(t, string(data), rr.Body.String())
 }
 
-func TestResponseWriterPreservesHijacking(t *testing.T) {
+func TestResponseWriterUnwrapsForHijacking(t *testing.T) {
 	serverConn, clientConn := net.Pipe()
 	defer serverConn.Close()
 	defer clientConn.Close()
@@ -343,7 +343,7 @@ func TestResponseWriterPreservesHijacking(t *testing.T) {
 	}
 	rw := &responseWriter{ResponseWriter: underlying, statusCode: http.StatusOK}
 
-	conn, buf, err := rw.Hijack()
+	conn, buf, err := http.NewResponseController(rw).Hijack()
 
 	require.NoError(t, err)
 	require.Same(t, serverConn, conn)
