@@ -221,7 +221,7 @@ func TestHandleLokiQueriesWithRequest_MergesAndLimitsStreams(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?direction=backward&limit=2", nil)
+	r := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?direction=FORWARD&limit=2", nil)
 	HandleLokiQueriesWithRequest(r.Context(), w, r, results, nil, logger)
 
 	var response map[string]any
@@ -230,7 +230,7 @@ func TestHandleLokiQueriesWithRequest_MergesAndLimitsStreams(t *testing.T) {
 	require.True(t, ok)
 	result, ok := data["result"].([]any)
 	require.True(t, ok)
-	require.Len(t, result, 2)
+	require.Len(t, result, 1)
 
 	entries := 0
 	for _, rawStream := range result {
@@ -238,6 +238,8 @@ func TestHandleLokiQueriesWithRequest_MergesAndLimitsStreams(t *testing.T) {
 		entries += len(stream["values"].([]any))
 	}
 	require.Equal(t, 2, entries)
+	require.Equal(t, "old", result[0].(map[string]any)["values"].([]any)[0].([]any)[1])
+	require.Equal(t, "middle", result[0].(map[string]any)["values"].([]any)[1].([]any)[1])
 }
 
 func TestHandleLokiQueries_WithEncodingFlags(t *testing.T) {

@@ -38,16 +38,16 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 // applying it independently at each backend multiplies the result by the
 // number of configured server groups.
 func HandleLokiQueriesWithRequest(_ context.Context, w http.ResponseWriter, r *http.Request, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
-	limit := 0
+	limit := 100
 	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
 		if parsedLimit, err := strconv.Atoi(rawLimit); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
 		}
 	}
 
-	direction := r.URL.Query().Get("direction")
-	if direction != "forward" {
-		direction = "backward"
+	direction := "backward"
+	if strings.EqualFold(r.URL.Query().Get("direction"), "forward") {
+		direction = "forward"
 	}
 
 	handleLokiQueries(w, results, warnings, logger, limit, direction)
