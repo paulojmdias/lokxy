@@ -297,12 +297,13 @@ func (p *Proxy) Handler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		p.fanoutRequest(w, r, handler.HandleLokiQueries)
+		p.fanoutRequest(w, r, func(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+			handler.HandleLokiQueriesWithRequest(ctx, w, r, results, warnings, logger)
+		})
 	})
 
 	// Variable to hold the API routes and their corresponding handlers
 	apiRoutes := map[string]transformFn{
-		"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 		"/loki/api/v1/series":             handler.HandleLokiSeries,
 		"/loki/api/v1/index/stats":        handler.HandleLokiStats,
 		"/loki/api/v1/labels":             handler.HandleLokiLabels,
@@ -312,6 +313,13 @@ func (p *Proxy) Handler() func(http.ResponseWriter, *http.Request) {
 		"/loki/api/v1/patterns":           handler.HandleLokiPatterns,
 		"/loki/api/v1/detected_fields":    handler.HandleLokiDetectedFields,
 	}
+	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
+		p.fanoutRequest(w, r, func(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+			handler.HandleLokiQueriesWithRequest(ctx, w, r, results, warnings, logger)
+		})
+	})
 	for path, handlerFunc := range apiRoutes {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			span := trace.SpanFromContext(r.Context())
