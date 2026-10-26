@@ -28,8 +28,21 @@ type encodingFlagsEnvelope struct {
 	} `json:"data"`
 }
 
-// Handle Loki query and query_range responses
-func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+const (
+	VectorMergeDedupe = "dedupe"
+	VectorMergeSum    = "sum"
+)
+
+// HandleLokiQueries handles Loki query and query_range responses using the
+// backwards-compatible deduplication behavior for direct callers.
+func HandleLokiQueries(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+	HandleLokiQueriesWithVectorMerge(ctx, w, results, warnings, logger, VectorMergeDedupe)
+}
+
+// HandleLokiQueriesWithVectorMerge handles Loki query and query_range
+// responses. Dedupe is appropriate when backends replicate the same data;
+// sum is appropriate when backends contain disjoint shards.
+func HandleLokiQueriesWithVectorMerge(_ context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger, vectorMergeStrategy string) {
 	var mergedStreams []loghttp.Stream
 	var mergedMatrix loghttp.Matrix
 	var mergedVector loghttp.Vector
@@ -117,15 +130,16 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 			for _, sample := range vector {
 				fp := sample.Metric.Fingerprint()
 				if existing, exists := vectorMap[fp]; exists {
-					if ce := level.Debug(logger); ce != nil {
-						if existing.Value != sample.Value {
-							_ = ce.Log(
-								"msg", "vector dedup: different values for same series",
+					if vectorMergeStrategy == VectorMergeSum {
+						if existing.Timestamp != sample.Timestamp {
+							level.Warn(logger).Log(
+								"msg", "vector merge: different timestamps for same series",
 								"metric", modelMetricKey(sample.Metric),
-								"existing_value", existing.Value,
-								"incoming_value", sample.Value,
+								"existing_timestamp", existing.Timestamp,
+								"incoming_timestamp", sample.Timestamp,
 							)
 						}
+						existing.Value += sample.Value
 					}
 				} else {
 					sampleCopy := sample

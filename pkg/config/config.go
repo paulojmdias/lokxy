@@ -65,7 +65,10 @@ type LoggerConfig struct {
 // Config represents the overall proxy configuration
 type Config struct {
 	ServerGroups []ServerGroup `yaml:"server_groups"`
-	Logging      LoggerConfig  `yaml:"logging"`
+	// VectorMergeStrategy controls whether additive LogQL vector queries may
+	// sum matching results across backends. Non-additive queries always dedupe.
+	VectorMergeStrategy string       `yaml:"vector_merge_strategy"`
+	Logging             LoggerConfig `yaml:"logging"`
 }
 
 // LoadConfig loads and parses the YAML configuration file
@@ -105,6 +108,10 @@ func (c *Config) Validate() error {
 		if sg.IgnoreError && sg.DowngradeError {
 			return fmt.Errorf("server_groups[%d]: ignore_error and downgrade_error are mutually exclusive", i)
 		}
+	}
+
+	if c.VectorMergeStrategy != "" && c.VectorMergeStrategy != "dedupe" && c.VectorMergeStrategy != "sum" {
+		return fmt.Errorf("vector_merge_strategy must be either dedupe or sum")
 	}
 
 	return nil

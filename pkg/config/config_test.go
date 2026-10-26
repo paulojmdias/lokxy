@@ -217,3 +217,18 @@ func TestValidate_MutuallyExclusiveErrorHandling(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mutually exclusive")
 }
+
+func TestValidate_VectorMergeStrategy(t *testing.T) {
+	base := Config{ServerGroups: []ServerGroup{{Name: "loki1", URL: "http://localhost:3100"}}}
+
+	for _, strategy := range []string{"", "dedupe", "sum"} {
+		cfg := base
+		cfg.VectorMergeStrategy = strategy
+		require.NoError(t, cfg.Validate(), strategy)
+	}
+
+	base.VectorMergeStrategy = "invalid"
+	err := base.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "vector_merge_strategy")
+}
