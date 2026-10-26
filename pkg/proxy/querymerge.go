@@ -32,8 +32,9 @@ func queryFromRequest(r *http.Request) string {
 	return values.Get("query")
 }
 
-// isAdditiveVectorQuery reports whether a query's outer expression is an
-// additive sum whose per-shard vector results can be combined by addition.
+// isAdditiveVectorQuery reports whether a query matches the supported
+// additive-shard subset whose per-shard vector results can be combined by
+// addition. This intentionally does not attempt generic LogQL federation.
 // Loki evaluates each backend independently, so summing arbitrary vectors
 // would be incorrect for max, avg, topk, vector(), and similar expressions.
 //

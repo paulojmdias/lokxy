@@ -65,8 +65,9 @@ type LoggerConfig struct {
 // Config represents the overall proxy configuration
 type Config struct {
 	ServerGroups []ServerGroup `yaml:"server_groups"`
-	// VectorMergeStrategy controls whether additive LogQL vector queries may
-	// sum matching results across backends. Non-additive queries always dedupe.
+	// VectorMergeStrategy enables targeted additive-shard merging for supported
+	// LogQL vector queries. It is not a generic LogQL federation engine;
+	// non-additive queries always dedupe.
 	VectorMergeStrategy string       `yaml:"vector_merge_strategy"`
 	Logging             LoggerConfig `yaml:"logging"`
 }

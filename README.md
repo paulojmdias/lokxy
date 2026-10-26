@@ -143,8 +143,10 @@ server_groups:
         response_header_timeout: 25s
         force_attempt_http2: true
 
-# Optional. When set to "sum", only root additive sum expressions are
-# summed across backends; non-additive vector queries are deduplicated.
+# Optional targeted mode for disjoint shards. When set to "sum", only
+# supported root additive sum expressions are summed across backends;
+# non-additive vector queries are deduplicated. This is not generic LogQL
+# federation.
 vector_merge_strategy: sum
 
 logging:
