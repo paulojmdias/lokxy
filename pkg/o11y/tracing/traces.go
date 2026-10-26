@@ -132,6 +132,12 @@ type responseWriter struct {
 	statusCode int
 }
 
+// Unwrap lets http.ResponseController access optional interfaces implemented
+// by the underlying response writer.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
+
 func (rw *responseWriter) WriteHeader(statusCode int) {
 	rw.statusCode = statusCode
 	rw.ResponseWriter.WriteHeader(statusCode)
