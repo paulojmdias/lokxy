@@ -38,15 +38,17 @@ func HandleLokiQueries(_ context.Context, w http.ResponseWriter, results <-chan 
 // applying it independently at each backend multiplies the result by the
 // number of configured server groups.
 func HandleLokiQueriesWithRequest(_ context.Context, w http.ResponseWriter, r *http.Request, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+	_ = r.ParseForm()
+	params := r.Form
 	limit := 100
-	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
+	if rawLimit := params.Get("limit"); rawLimit != "" {
 		if parsedLimit, err := strconv.Atoi(rawLimit); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
 		}
 	}
 
 	direction := "backward"
-	if strings.EqualFold(r.URL.Query().Get("direction"), "forward") {
+	if strings.EqualFold(params.Get("direction"), "forward") {
 		direction = "forward"
 	}
 
@@ -59,6 +61,7 @@ func handleLokiQueries(w http.ResponseWriter, results <-chan *proxyresponse.Back
 	var mergedVector loghttp.Vector
 	var resultType loghttp.ResultType
 	var mergedStats stats.Result
+	streamResponses := 0
 	encodingFlagsMap := make(map[string]struct{})
 	vectorMap := make(map[model.Fingerprint]*model.Sample)
 	matrixMap := make(map[model.Fingerprint]*model.SampleStream)
@@ -114,6 +117,7 @@ func handleLokiQueries(w http.ResponseWriter, results <-chan *proxyresponse.Back
 				level.Error(logger).Log("msg", "Failed to assert type to loghttp.Streams")
 				continue
 			}
+			streamResponses++
 			mergedStreams = append(mergedStreams, streams...)
 
 		case loghttp.ResultTypeMatrix:
@@ -205,7 +209,11 @@ func handleLokiQueries(w http.ResponseWriter, results <-chan *proxyresponse.Back
 
 	switch resultType {
 	case loghttp.ResultTypeStream:
-		mergedStreams = mergeAndLimitStreams(mergedStreams, limit, direction)
+		if streamResponses == 1 {
+			mergedStreams = limitSingleBackendStreams(mergedStreams, limit, direction)
+		} else {
+			mergedStreams = mergeAndLimitStreams(mergedStreams, limit, direction)
+		}
 		_, categorizeLabels := encodingFlagsMap["categorize-labels"]
 		var formattedResults []map[string]any
 		for _, stream := range mergedStreams {
@@ -394,6 +402,24 @@ func mergeAndLimitStreams(streams []loghttp.Stream, limit int, direction string)
 		result = append(result, *selected[key])
 	}
 	return result
+}
+
+// limitSingleBackendStreams avoids rebuilding and sorting a response when
+// only one backend contributed streams. If the response exceeds the limit,
+// use the full merge path so the global direction is preserved across streams.
+func limitSingleBackendStreams(streams []loghttp.Stream, limit int, direction string) []loghttp.Stream {
+	if limit <= 0 {
+		return streams
+	}
+
+	total := 0
+	for _, stream := range streams {
+		total += len(stream.Entries)
+	}
+	if total <= limit {
+		return streams
+	}
+	return mergeAndLimitStreams(streams, limit, direction)
 }
 
 // modelMetricKey creates a consistent string key from a model.Metric for

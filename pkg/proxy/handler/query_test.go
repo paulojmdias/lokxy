@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -221,7 +222,7 @@ func TestHandleLokiQueriesWithRequest_MergesAndLimitsStreams(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?direction=FORWARD&limit=2", nil)
+	r := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range?direction=BACKWARD&limit=3", nil)
 	HandleLokiQueriesWithRequest(r.Context(), w, r, results, nil, logger)
 
 	var response map[string]any
@@ -230,16 +231,47 @@ func TestHandleLokiQueriesWithRequest_MergesAndLimitsStreams(t *testing.T) {
 	require.True(t, ok)
 	result, ok := data["result"].([]any)
 	require.True(t, ok)
-	require.Len(t, result, 1)
+	require.Len(t, result, 2)
 
 	entries := 0
 	for _, rawStream := range result {
 		stream := rawStream.(map[string]any)
 		entries += len(stream["values"].([]any))
 	}
-	require.Equal(t, 2, entries)
-	require.Equal(t, "old", result[0].(map[string]any)["values"].([]any)[0].([]any)[1])
-	require.Equal(t, "middle", result[0].(map[string]any)["values"].([]any)[1].([]any)[1])
+	require.Equal(t, 3, entries)
+	entriesByApp := make(map[string][]any)
+	for _, rawStream := range result {
+		stream := rawStream.(map[string]any)
+		labels := stream["stream"].(map[string]any)
+		entriesByApp[labels["app"].(string)] = stream["values"].([]any)
+	}
+	require.Equal(t, "latest", entriesByApp["worker"][0].([]any)[1])
+	require.Equal(t, "new", entriesByApp["api"][0].([]any)[1])
+	require.Equal(t, "middle", entriesByApp["api"][1].([]any)[1])
+}
+
+func TestHandleLokiQueriesWithRequest_ReadsPOSTFormParameters(t *testing.T) {
+	logger := log.NewNopLogger()
+	body := `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"api"},"values":[["1609459200000000000","old"],["1609459203000000000","new"]]}],"stats":{}}}`
+
+	results := make(chan *proxyresponse.BackendResponse, 1)
+	rec := httptest.NewRecorder()
+	rec.WriteString(body)
+	results <- wrapResponse(rec.Result())
+	close(results)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/loki/api/v1/query_range", strings.NewReader("limit=1&direction=forward"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleLokiQueriesWithRequest(r.Context(), w, r, results, nil, logger)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	data := response["data"].(map[string]any)
+	result := data["result"].([]any)
+	values := result[0].(map[string]any)["values"].([]any)
+	require.Len(t, values, 1)
+	require.Equal(t, "old", values[0].([]any)[1])
 }
 
 func TestHandleLokiQueries_WithEncodingFlags(t *testing.T) {
