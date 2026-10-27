@@ -246,6 +246,7 @@ func TestHandleLokiQueriesWithRequest_MergesAndLimitsStreams(t *testing.T) {
 		entriesByApp[labels["app"].(string)] = stream["values"].([]any)
 	}
 	require.Equal(t, "latest", entriesByApp["worker"][0].([]any)[1])
+	require.Len(t, entriesByApp["api"], 2)
 	require.Equal(t, "new", entriesByApp["api"][0].([]any)[1])
 	require.Equal(t, "middle", entriesByApp["api"][1].([]any)[1])
 }
