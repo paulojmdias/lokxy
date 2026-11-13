@@ -18,10 +18,18 @@ deployment:
   # -- Custom deployment annotations
   annotations: {}
 
-  # -- Environment variables for the container
+  # -- Environment variables for the container.
+  # For example, to export traces and logs to a multi-tenant Tempo over gRPC:
+  # env:
+  #   - name: OTEL_EXPORTER_OTLP_ENDPOINT
+  #     value: http://tempo.endpoint
+  #   - name: OTEL_EXPORTER_OTLP_PROTOCOL
+  #     value: grpc
+  #   - name: OTEL_EXPORTER_OTLP_HEADERS
+  #     value: X-Scope-OrgID=my-tenant
   env: []
 
-  # -- Common environment variables to add to all pods directly managed by this chart.
+  # -- Additional environment variables, appended after `env`.
   extraEnv: []
 
   # -- Common source of environment injections to add to all pods directly managed by this chart.

@@ -17,7 +17,7 @@ You can then run `helm search repo lokxy` to see the charts.
 
 ## Version
 
-![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.9.0](https://img.shields.io/badge/AppVersion-v0.9.0-informational?style=flat-square)
+![Version: 0.2.1](https://img.shields.io/badge/Version-0.2.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.9.0](https://img.shields.io/badge/AppVersion-v0.9.0-informational?style=flat-square)
 
 Lokxy is a powerful log aggregator for Loki
 
@@ -42,9 +42,9 @@ Kubernetes: `>=1.23.0-0`
 | configWatch.enabled | bool | `false` | Watch the mounted configuration file and reload it automatically when it changes (--config.watch). Works with ConfigMap/Secret updates, which the kubelet propagates to the volume without restarting the pod. |
 | deployment.annotations | object | `{}` | Custom deployment annotations |
 | deployment.command | list | `["/usr/local/bin/lokxy"]` | Command to run in the container |
-| deployment.env | list | `[]` | Environment variables for the container |
+| deployment.env | list | `[]` | Environment variables for the container. For example, to export traces and logs to a multi-tenant Tempo over gRPC: env:   - name: OTEL_EXPORTER_OTLP_ENDPOINT     value: http://tempo-distributor.tracing.svc.cluster.local:4317   - name: OTEL_EXPORTER_OTLP_PROTOCOL     value: grpc   - name: OTEL_EXPORTER_OTLP_HEADERS     value: X-Scope-OrgID=my-tenant |
 | deployment.extraArgs | list | `[]` | Additional CLI arguments passed to the main container |
-| deployment.extraEnv | list | `[]` | Common environment variables to add to all pods directly managed by this chart. |
+| deployment.extraEnv | list | `[]` | Additional environment variables, appended after `env`. |
 | deployment.extraEnvFrom | list | `[]` | Common source of environment injections to add to all pods directly managed by this chart. For example to inject values from a Secret, use: extraEnvFrom:   - secretRef:       name: mysecret |
 | deployment.extraFlags | object | `{}` |  |
 | deployment.extraVolumeMounts | list | `[]` | Additional volume mounts for the container |
