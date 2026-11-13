@@ -70,7 +70,8 @@ spec:
             - name: metrics
               containerPort: {{ .Values.ports.metrics }}
               protocol: TCP
-          {{- with .Values.deployment.extraEnv }}
+          {{- $env := concat (default list .Values.deployment.env) (default list .Values.deployment.extraEnv) }}
+          {{- with $env }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}

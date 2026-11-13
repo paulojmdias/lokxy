@@ -237,6 +237,19 @@ The application includes tracing instrumentation using OpenTelemetry. To collect
 
 Configure the trace export destination using standard OpenTelemetry environment variables: `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` for the collector endpoint, or `OTEL_EXPORTER_OTLP_ENDPOINT` as a fallback. Set `OTEL_EXPORTER_OTLP_INSECURE=true` for development environments using insecure gRPC connections. If no endpoint is configured, the application defaults to `localhost:4317` as per [otlp exporter documentation](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/). An example of this can also be fund in `mixin/play/`.
 
+The transport is selected with `OTEL_EXPORTER_OTLP_PROTOCOL` (`grpc` by default; `http/protobuf` is also supported). Extra headers for every export can be passed with `OTEL_EXPORTER_OTLP_HEADERS` as a comma-separated list of `key=value` pairs, which is how a tenant is selected on a multi-tenant backend such as Grafana Tempo. For example, when deploying with the Helm chart:
+
+```yaml
+deployment:
+  env:
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://tempo-distributor.tracing.svc.cluster.local:4317
+    - name: OTEL_EXPORTER_OTLP_PROTOCOL
+      value: grpc
+    - name: OTEL_EXPORTER_OTLP_HEADERS
+      value: X-Scope-OrgID=my-tenant
+```
+
 ## Reloading Configuration
 
 `lokxy` can reload its configuration file at runtime, without a restart. A reload validates the new configuration first — if it is invalid (or a referenced TLS file cannot be read), the reload fails and the previous configuration stays active.
