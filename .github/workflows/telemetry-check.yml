@@ -29,7 +29,9 @@ jobs:
         uses: open-telemetry/weaver/.github/actions/setup-weaver@51a5bf95bdbb2e20fb6e16638e6bbe7dde911e93 # v0.28.0
 
       - name: Validate telemetry schema
-        run: weaver registry check -r ./weaver/ --future
+        # --future is omitted on purpose: it promotes warnings to errors, and the upstream
+        # semantic-conventions manifest lacks file_format, which would always fail the check.
+        run: weaver registry check -r ./weaver/
 
       - name: Build lokxy image
         run: docker compose -f mixin/play/docker-compose.telemetry-check.yml build lokxy
