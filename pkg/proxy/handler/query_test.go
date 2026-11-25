@@ -553,8 +553,8 @@ func (f *failingQueryReader) Close() error {
 
 // TestHandleLokiQueries_VectorSumMerge verifies that vector entries with the
 // same metric labels from multiple backends are summed into a single entry.
-// This is the exact scenario that triggers the Grafana health-check failure:
-// each backend returns {} -> 2 for "vector(1)+vector(1)".
+// This verifies that identical instant-vector series from multiple backends
+// are summed. The Grafana health check is intercepted before fan-out.
 func TestHandleLokiQueries_VectorSumMerge(t *testing.T) {
 	logger := log.NewNopLogger()
 
@@ -591,7 +591,7 @@ func TestHandleLokiQueries_VectorSumMerge(t *testing.T) {
 	close(results)
 
 	w := httptest.NewRecorder()
-	HandleLokiQueries(t.Context(), w, results, nil, logger)
+	HandleLokiQueriesWithVectorMerge(t.Context(), w, results, nil, logger, VectorMergeSum)
 
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
@@ -602,14 +602,14 @@ func TestHandleLokiQueries_VectorSumMerge(t *testing.T) {
 
 	result, ok := data["result"].([]any)
 	require.True(t, ok)
-	// Must be 1 entry (merged), not 2 (which breaks Grafana health-check)
+	// Must be 1 merged entry.
 	require.Len(t, result, 1)
 
-	// Value should be deduplicated (kept from first backend), not summed
+	// Values from all backends must be summed.
 	entry := result[0].(map[string]any)
 	value := entry["value"].([]any)
 	// model.SampleValue serializes as a JSON string via its MarshalJSON
-	require.Equal(t, "2", value[1])
+	require.Equal(t, "4", value[1])
 }
 
 // TestHandleLokiQueries_VectorSumMergeDifferentMetrics verifies that vector

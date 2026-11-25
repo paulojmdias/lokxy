@@ -297,12 +297,17 @@ func (p *Proxy) Handler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		p.fanoutRequest(w, r, handler.HandleLokiQueries)
+		p.fanoutRequest(w, r, p.vectorQueryHandler(queryFromRequest(r)))
+	})
+
+	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(attribute.String("proxy.route_type", "api_route"))
+		p.fanoutRequest(w, r, p.vectorQueryHandler(queryFromRequest(r)))
 	})
 
 	// Variable to hold the API routes and their corresponding handlers
 	apiRoutes := map[string]transformFn{
-		"/loki/api/v1/query_range":        handler.HandleLokiQueries,
 		"/loki/api/v1/series":             handler.HandleLokiSeries,
 		"/loki/api/v1/index/stats":        handler.HandleLokiStats,
 		"/loki/api/v1/labels":             handler.HandleLokiLabels,
@@ -343,6 +348,18 @@ func (p *Proxy) Handler() func(http.ResponseWriter, *http.Request) {
 		level.Info(logger).Log("msg", "Handling request", "method", method, "path", path, "query", r.URL.RawQuery)
 
 		mux.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+func (p *Proxy) vectorQueryHandler(query string) transformFn {
+	return func(ctx context.Context, w http.ResponseWriter, results <-chan *proxyresponse.BackendResponse, warnings []string, logger log.Logger) {
+		strategy := p.state.Load().config.VectorMergeStrategy
+		if strategy == handler.VectorMergeSum && !isAdditiveVectorQuery(query) {
+			strategy = handler.VectorMergeDedupe
+		} else if strategy == "" {
+			strategy = handler.VectorMergeDedupe
+		}
+		handler.HandleLokiQueriesWithVectorMerge(ctx, w, results, warnings, logger, strategy)
 	}
 }
 
