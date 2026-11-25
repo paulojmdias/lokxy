@@ -8,7 +8,7 @@ groups:
       and wraps all downstream proxy work for that request.
     note: >
       Span name is set dynamically as "{http.request.method} {url.path}".
-      Attributes follow OTel HTTP semconv v1.40.0.
+      Attributes follow OTel HTTP semconv v1.43.0.
     attributes:
       - ref: http.request.method
         requirement_level: required
