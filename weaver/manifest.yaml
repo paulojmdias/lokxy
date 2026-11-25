@@ -1,3 +1,4 @@
+file_format: definition_manifest/2.0
 name: lokxy
 description: Telemetry schema for the lokxy Loki multi-instance proxy
 schema_url: https://github.com/paulojmdias/lokxy/schemas/0.1.0
